@@ -26,15 +26,39 @@ from gemini_client import GeminiClient
 from text_processor import TextProcessor
 
 # 配置日志
-logging.basicConfig(
-    level=logging.DEBUG,  # 改为DEBUG级别以显示调试信息
-    format='%(asctime)s [%(levelname)s] %(filename)s:%(lineno)d - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('story_creator_v2.log', encoding='utf-8'),
-        logging.FileHandler('story_creator_v2_debug.log', encoding='utf-8')  # 添加专门的调试日志文件
-    ]
+# 清除默认配置
+for handler in logging.root.handlers[:]:
+    logging.root.removeHandler(handler)
+
+# 设置根日志级别
+logging.root.setLevel(logging.DEBUG)
+
+# 创建格式器
+formatter = logging.Formatter(
+    '%(asctime)s [%(levelname)s] %(filename)s:%(lineno)d - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
 )
+
+# 控制台处理器 - 只显示INFO及以上级别
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(formatter)
+
+# 主日志文件 - 记录INFO及以上级别
+file_handler = logging.FileHandler('story_creator_v2.log', encoding='utf-8', mode='a')
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(formatter)
+
+# 调试日志文件 - 记录所有级别（包括DEBUG）
+debug_handler = logging.FileHandler('story_creator_v2_debug.log', encoding='utf-8', mode='a')
+debug_handler.setLevel(logging.DEBUG)
+debug_handler.setFormatter(formatter)
+
+# 添加处理器到根日志器
+logging.root.addHandler(console_handler)
+logging.root.addHandler(file_handler)
+logging.root.addHandler(debug_handler)
+
 logger = logging.getLogger(__name__)
 
 
@@ -54,11 +78,6 @@ class ContextManager:
         """
         # 用户提供最高指示
         global_context = f"""
-{TextProcessor.SECTION_DIVIDER}
-最高指示 - 故事DNA
-{TextProcessor.SECTION_DIVIDER}
-{story_dna}
-
 {TextProcessor.SECTION_DIVIDER}
 最高指示 - 完整框架（30个片段）
 {TextProcessor.SECTION_DIVIDER}
@@ -108,7 +127,7 @@ class ContextManager:
 class YouTubeStoryCreatorV2:
     """新版YouTube故事创作器 - 专注于30000字长故事"""
     
-    def __init__(self, video_id: str, creator_name: str, target_length: int = 30000, sd_prompt_file: str = None):
+    def __init__(self, video_id: str, creator_name: str, target_length: int = 30000, sd_prompt_file: str = None, num_segments: int = 9, images_per_segment: int = 1):
         """
         初始化
         
@@ -117,11 +136,14 @@ class YouTubeStoryCreatorV2:
             creator_name: 创作者名称
             target_length: 目标故事长度（默认30000字）
             sd_prompt_file: SD提示词生成的prompt文件路径
+            num_segments: 片段数量（默认9个，对应9步结构）
+            images_per_segment: 每个片段生成的图片数量（默认1张）
         """
         self.video_id = video_id
         self.creator_name = creator_name
         self.target_length = target_length
-        self.num_segments = 30  # 固定30个片段
+        self.num_segments = num_segments  # 默认9个片段
+        self.images_per_segment = images_per_segment  # 每个片段的图片数
         self.sd_prompt_file = sd_prompt_file or "prompts/sd_image_generator_v2.md"
         
         # 创建输出目录
@@ -409,7 +431,7 @@ class YouTubeStoryCreatorV2:
     
     def phase2_generate_framework(self, story_dna: str, video_info: Dict, comments: List) -> str:
         """
-        第二阶段：生成30个片段的详细框架
+        第二阶段：生成9步故事改编框架
         如果已有处理结果，则从文件加载
         
         Args:
@@ -420,7 +442,7 @@ class YouTubeStoryCreatorV2:
         Returns:
             框架文本
         """
-        logger.info("📋 第二阶段：开始生成30个片段的二级框架...")
+        logger.info("📋 第二阶段：开始生成故事改编框架（9步结构）...")
         
         # 检查是否已有处理结果
         framework_file = self.processing_dir / "2_framework.txt"
@@ -438,15 +460,18 @@ class YouTubeStoryCreatorV2:
                 import traceback
                 traceback.print_exc()
         
-        # 准备输入
+        # 准备输入 - 适配新的提示词格式
         top_comments = [c['text'] for c in comments[:5]]
         
-        input_data = f"""
-### Original Story DNA & Metadata
-- **Reference Title:** {video_info['title']}
-- **Top Comments:** 
+        # 计算原故事字数（从字幕/DNA中估算）
+        original_word_count = len(story_dna) if story_dna else 5000
+        
+        input_data = f"""### 原始故事DNA与元数据
+- **原故事参考字数：** {original_word_count}
+- **原始标题：** {video_info['title']}
+- **热门评论（核心槽点来源）：**
 {chr(10).join([f'  - {comment}' for comment in top_comments])}
-- **Story DNA:**
+- **故事DNA：**
 {story_dna}
 """
         
@@ -465,7 +490,7 @@ class YouTubeStoryCreatorV2:
         max_retries = 1
         for attempt in range(max_retries):
             try:
-                logger.info(f"full promtp = {full_prompt}")
+                
                 # 调用Gemini API
                 response = self.gemini_client.generate_content(full_prompt)
                 
@@ -494,10 +519,6 @@ class YouTubeStoryCreatorV2:
             except Exception as e:
                 logger.error(f"❌ 尝试 {attempt + 1}/{max_retries} 失败: {e}")
                 import traceback
-                traceback.print_exc()
-                if attempt < max_retries - 1:
-                    time.sleep(3)
-        
         logger.error("❌ 所有重试都失败了")
         return None
     
@@ -681,6 +702,288 @@ class YouTubeStoryCreatorV2:
         
         logger.info(f"✅ 完成所有片段生成，共 {len(segments)} 个片段")
         return segments
+    
+    def phase3_generate_segments_simple(self, story_dna: str, framework: str) -> List[str]:
+        """
+        简化版片段生成 - 手动控制上下文，不使用聊天历史
+        每个片段都是独立的API调用，只传递前500字用于衔接
+        
+        Args:
+            story_dna: 故事DNA
+            framework: 故事改编框架
+            
+        Returns:
+            生成的片段列表
+        """
+        logger.info(f"📝 第三阶段：开始生成故事片段（简化版，共{self.num_segments}个片段）...")
+        
+        # 1. 从框架提取必要信息
+        framework_summary = self.extract_framework_summary(framework)
+        segment_tasks = self.extract_segment_tasks(framework)
+        
+        segments = []
+        
+        for i in range(1, self.num_segments + 1):
+            # 检查缓存
+            segment_file = self.segments_dir / f"segment_{i:02d}.txt"
+            if segment_file.exists():
+                try:
+                    with open(segment_file, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        if content.strip():
+                            segments.append(content)
+                            logger.info(f"📂 使用缓存的片段 {i}, 长度: {len(content)}字")
+                            continue
+                except Exception as e:
+                    logger.warning(f"⚠️ 读取片段 {i} 失败: {e}")
+            
+            # 2. 构建输入（完全手动控制）
+            segment_input = self.build_segment_input_simple(
+                segment_num=i,
+                framework_summary=framework_summary,
+                previous_text=segments[-1][-500:] if segments else "",
+                segment_task=segment_tasks.get(i, {})
+            )
+            
+            # 3. 生成片段（独立的API调用）
+            try:
+                logger.info(f"🔄 生成片段 {i}/{self.num_segments}: {segment_tasks.get(i, {}).get('chapter', '')}")
+                
+                # DEBUG: 记录输入
+                logger.debug("=" * 80)
+                logger.debug(f"[DEBUG] 片段{i}输入:")
+                logger.debug(f"输入长度: {len(segment_input)} 字符")
+                logger.debug("输入内容:")
+                logger.debug(segment_input)
+                logger.debug("=" * 80)
+                
+                response = self.gemini_client.generate_content(segment_input)
+                
+                # DEBUG: 记录输出
+                logger.debug("=" * 80)
+                logger.debug(f"[DEBUG] 片段{i}输出:")
+                logger.debug(f"输出长度: {len(response) if response else 0} 字符")
+                if response:
+                    logger.debug("输出内容:")
+                    logger.debug(response)
+                else:
+                    logger.debug("响应为空")
+                logger.debug("=" * 80)
+                
+                if response:
+                    segments.append(response)
+                    # 保存片段
+                    with open(segment_file, 'w', encoding='utf-8') as f:
+                        f.write(response)
+                    
+                    logger.info(f"✅ 片段 {i} 生成完成: {len(response)}字")
+                    
+                    # 适当休息避免限流
+                    if i % 5 == 0:
+                        logger.info("⏸️ 暂停2秒...")
+                        time.sleep(2)
+                else:
+                    logger.error(f"❌ 片段 {i} 生成失败")
+                    segments.append(f"[片段{i}生成失败]")
+                    
+            except Exception as e:
+                logger.error(f"❌ 生成片段 {i} 时出错: {e}")
+                import traceback
+                traceback.print_exc()
+                segments.append(f"[片段{i}生成失败: {str(e)}]")
+        
+        logger.info(f"✅ 完成所有片段生成，共 {len(segments)} 个片段")
+        return segments
+    
+    def build_segment_input_simple(self, segment_num: int, framework_summary: str, 
+                                   previous_text: str, segment_task: dict) -> str:
+        """
+        构建片段生成的输入 - 简单直接
+        
+        Args:
+            segment_num: 片段编号
+            framework_summary: 框架摘要
+            previous_text: 前一段的最后500字
+            segment_task: 当前片段的任务信息
+            
+        Returns:
+            构建好的输入文本
+        """
+        # 读取segment_generator提示词
+        segment_prompt = self.prompts.get('segment_generator', '')
+        
+        # 根据新的提示词格式构建输入
+        input_text = f"""{segment_prompt}
+
+==================================================
+**最高指令：故事改编框架 V2.1 (摘要)**
+==================================================
+{framework_summary}
+
+==================================================
+**前一段内容 (Previous Segment)**
+==================================================
+{previous_text if previous_text else "**This is the first segment.**"}
+
+==================================================
+**本段任务卡 (Current Segment Task Card)**
+==================================================
+- **段落编号：** 第 {segment_num} 段
+- **章节归属：** {segment_task.get('chapter', '发展')}
+- **本段核心任务：** {segment_task.get('task', '继续推进故事')}
+- **节奏与字数指引：** {segment_task.get('rhythm', '正常节奏')}
+"""
+        
+        return input_text
+    
+    def extract_framework_summary(self, framework: str) -> str:
+        """
+        从新版framework提取摘要信息
+        
+        Args:
+            framework: 框架文本
+            
+        Returns:
+            框架摘要
+        """
+        import re
+        
+        summary_parts = []
+        
+        # 提取核心改编理念
+        if match := re.search(r'核心改编理念：\*\*\s*(.+)', framework):
+            summary_parts.append(f"- **核心改编理念：** {match.group(1)}")
+        
+        # 提取槽点策略
+        if match := re.search(r'识别出的核心槽点：\*\*\s*(.+)', framework):
+            summary_parts.append(f"- **槽点策略：** {match.group(1)}")
+        
+        if match := re.search(r'放大方案：\*\*\s*(.+)', framework):
+            summary_parts.append(f"- **放大方案：** {match.group(1)}")
+        
+        # 提取9步结构简述
+        nine_steps = []
+        for step in ['钩子开场', '角色与动机', '意外转折', '尝试与失败', 
+                     '情绪低谷', '顿悟与转变', '最终行动', '胜利的代价', '新的悬念']:
+            if step in framework:
+                nine_steps.append(step)
+        
+        if nine_steps:
+            summary_parts.append(f"- **9步结构：** {', '.join(nine_steps)}")
+        
+        # 提取角色名字
+        characters = re.findall(r'角色\d+：\[([^\]]+)\]', framework)
+        if characters:
+            summary_parts.append(f"- **角色名册：** {', '.join(characters)}")
+        
+        return '\n'.join(summary_parts) if summary_parts else "- **核心理念：** 改编故事"
+    
+    def extract_segment_tasks(self, framework: str) -> dict:
+        """
+        从9步结构映射到片段的任务
+        
+        Args:
+            framework: 框架文本
+            
+        Returns:
+            片段任务字典 {segment_num: task_info}
+        """
+        tasks = {}
+        
+        # 从框架中提取每步的具体内容
+        step_contents = self.parse_nine_steps(framework)
+        
+        if self.num_segments == 9:
+            # 9个片段时，每步对应一个片段
+            step_names = ['钩子开场', '角色与动机', '意外转折', '尝试与失败', 
+                         '情绪低谷', '顿悟与转变', '最终行动', '胜利的代价', '新的悬念']
+            
+            for i in range(1, 10):
+                if i <= len(step_names):
+                    step_name = step_names[i-1]
+                    tasks[i] = {
+                        'chapter': step_name,
+                        'task': step_contents.get(step_name, {}).get('情节规划', f'{step_name}阶段')
+                    }
+        else:
+            # 如果是其他数量的片段，使用比例分配
+            # 30片段的原始映射
+            MAPPING_30 = {
+                (1, 2): ('钩子开场', '快节奏，悬念丛生', 700),
+                (3, 5): ('角色与动机', '中等节奏，人物刻画', 1000),
+                (6, 8): ('意外转折', '节奏加快，制造冲击', 900),
+                (9, 13): ('尝试与失败', '动作与内心戏结合', 1200),
+                (14, 17): ('情绪低谷', '慢节奏，情绪渲染', 1100),
+                (18, 20): ('顿悟与转变', '转折点，节奏由慢转快', 900),
+                (21, 26): ('最终行动', '极快节奏，动作密集', 1500),
+                (27, 29): ('胜利的代价', '节奏放缓，带反思', 1100),
+                (30, 30): ('新的悬念', '短小精悍，制造悬念', 500)
+            }
+            
+            # 按比例分配片段
+            for segment in range(1, self.num_segments + 1):
+                # 计算当前片段对应30片段体系的位置
+                position_30 = int((segment - 1) * 30 / self.num_segments) + 1
+                
+                for (start, end), (step_name, rhythm, words) in MAPPING_30.items():
+                    if start <= position_30 <= end:
+                        tasks[segment] = {
+                            'chapter': step_name,
+                            'task': step_contents.get(step_name, {}).get('情节规划', f'{step_name}阶段'),
+                            'rhythm': f"{rhythm}。约{words}字"
+                        }
+                        break
+        
+        return tasks
+    
+    def _get_rhythm_for_step(self, step_name: str) -> str:
+        """获取每个步骤的节奏说明"""
+        rhythms = {
+            '钩子开场': '快节奏，悬念丛生',
+            '角色与动机': '中等节奏，人物刻画',
+            '意外转折': '节奏加快，制造冲击',
+            '尝试与失败': '动作与内心戏结合',
+            '情绪低谷': '慢节奏，情绪渲染',
+            '顿悟与转变': '转折点，节奏由慢转快',
+            '最终行动': '极快节奏，动作密集',
+            '胜利的代价': '节奏放缓，带反思',
+            '新的悬念': '短小精悍，制造悬念'
+        }
+        return rhythms.get(step_name, '正常节奏')
+    
+    def parse_nine_steps(self, framework: str) -> dict:
+        """
+        解析9步结构的具体内容
+        
+        Args:
+            framework: 框架文本
+            
+        Returns:
+            9步内容字典
+        """
+        import re
+        steps = {}
+        
+        # 匹配每个步骤的内容
+        # 格式: **1. 钩子开场 (Hook)：**
+        #       - **情节规划：** [内容]
+        pattern = r'\*\*\d+\.\s+([^(]+)\s*\([^)]+\)：\*\*[^\n]*\n\s*-\s*\*\*情节规划：\*\*\s*([^\n]+)'
+        
+        matches = re.findall(pattern, framework)
+        for step_name, plot in matches:
+            step_name = step_name.strip()
+            steps[step_name] = {'情节规划': plot.strip()}
+        
+        # 如果上面的模式匹配失败，尝试更简单的模式
+        if not steps:
+            # 尝试匹配: 1. 钩子开场 (Hook)
+            simple_pattern = r'\d+\.\s*([^(]+)\s*\([^)]+\)'
+            simple_matches = re.findall(simple_pattern, framework)
+            for step_name in simple_matches:
+                step_name = step_name.strip()
+                steps[step_name] = {'情节规划': f'{step_name}阶段'}
+        
+        return steps
     
     def phase4_concat_segments(self, segments: List[str]) -> str:
         """
@@ -1388,6 +1691,338 @@ Final Story Sample
             # 返回基础分析
             return self._extract_framework_summary('')
     
+    def generate_image_prompts_v2(self) -> bool:
+        """
+        优化版SD图片提示词生成
+        1. 从框架提取角色特征
+        2. 从每个segment内容提取关键画面
+        3. 结合角色特征生成SD提示词
+        
+        Returns:
+            bool: 成功返回true，失败返回false
+        """
+        try:
+            logger.info(f"🎨 开始生成SD图片提示词（优化版，每片段{self.images_per_segment}张）...")
+            
+            # 1. 读取框架文件，提取角色特征
+            framework_file = self.processing_dir / "2_framework.txt"
+            if not framework_file.exists():
+                logger.error(f"框架文件不存在: {framework_file}")
+                return False
+            
+            with open(framework_file, 'r', encoding='utf-8') as f:
+                framework_content = f.read()
+            
+            # 提取角色特征（保持视觉一致性）
+            character_profiles = self.extract_character_profiles(framework_content)
+            logger.info(f"✅ 提取到{len(character_profiles)}个角色特征")
+            
+            # 2. 处理每个片段
+            all_image_prompts = []
+            
+            for segment_num in range(1, self.num_segments + 1):
+                segment_file = self.segments_dir / f"segment_{segment_num:02d}.txt"
+                
+                if not segment_file.exists():
+                    logger.warning(f"片段{segment_num}不存在，跳过")
+                    continue
+                
+                with open(segment_file, 'r', encoding='utf-8') as f:
+                    segment_content = f.read()
+                
+                # 3. 从segment内容提取关键画面
+                key_scenes = self.extract_key_scenes_from_segment(
+                    segment_content, 
+                    segment_num,
+                    self.images_per_segment
+                )
+                
+                # 4. 为每个关键画面生成SD提示词
+                for scene_idx, scene in enumerate(key_scenes, 1):
+                    sd_prompt = self.generate_sd_prompt_for_scene(
+                        scene,
+                        character_profiles,
+                        segment_num,
+                        scene_idx
+                    )
+                    
+                    all_image_prompts.append({
+                        "segment": segment_num,
+                        "scene_index": scene_idx,
+                        "scene_description": scene.get("description", ""),
+                        "emotion": scene.get("emotion", ""),
+                        "sd_prompt": sd_prompt
+                    })
+                
+                logger.info(f"✅ 片段{segment_num}生成了{len(key_scenes)}个场景提示词")
+            
+            # 5. 保存所有提示词
+            if all_image_prompts:
+                output_file = self.final_dir / "sd_prompts_v2.json"
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    json.dump({
+                        "character_profiles": character_profiles,
+                        "total_images": len(all_image_prompts),
+                        "images": all_image_prompts
+                    }, f, ensure_ascii=False, indent=2)
+                
+                logger.info(f"💾 SD提示词已保存到: {output_file}")
+                
+                # 生成Markdown格式
+                self.save_prompts_as_markdown(all_image_prompts, character_profiles)
+                
+                return True
+            else:
+                logger.warning("没有生成任何提示词")
+                return False
+                
+        except Exception as e:
+            logger.error(f"生成SD提示词失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    def extract_character_profiles(self, framework: str) -> dict:
+        """
+        从框架中提取角色特征描述
+        
+        Args:
+            framework: 框架文本
+            
+        Returns:
+            角色特征字典
+        """
+        import re
+        
+        characters = {}
+        
+        # 尝试多种模式匹配角色描述
+        patterns = [
+            r"角色\d+：\[([^\]]+)\][^*]*\*\*[^*]*\*\*([^*]+)",  # 角色1：[名字]...描述
+            r"Character \d+:?\s*([^\n]+)[^*]*physical[^:]*:([^*\n]+)",  # Character 1: Name...physical:
+            r"主角[^:：]*[:：]\s*([^\n,，]+)[^*]*外[貌观][^:：]*[:：]([^*\n]+)",  # 主角：名字...外貌：
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, framework, re.IGNORECASE | re.DOTALL)
+            for match in matches:
+                if len(match) >= 2:
+                    name = match[0].strip()
+                    description = match[1].strip()
+                    characters[name] = {
+                        "name": name,
+                        "visual_description": description,
+                        "sd_features": self.extract_sd_features(description)
+                    }
+        
+        # 如果没找到，使用默认角色
+        if not characters:
+            characters["主角"] = {
+                "name": "主角",
+                "visual_description": "年轻人，坚定的眼神",
+                "sd_features": "young adult, determined eyes, casual clothing"
+            }
+        
+        return characters
+    
+    def extract_sd_features(self, description: str) -> str:
+        """
+        从中文描述提取SD友好的特征
+        
+        Args:
+            description: 中文描述
+            
+        Returns:
+            SD特征描述
+        """
+        # 简单的特征提取（实际可以用AI翻译）
+        features = []
+        
+        # 年龄特征
+        if "年轻" in description or "青年" in description:
+            features.append("young adult")
+        elif "中年" in description:
+            features.append("middle-aged")
+        elif "老" in description:
+            features.append("elderly")
+        
+        # 性别特征
+        if "女" in description:
+            features.append("female")
+        elif "男" in description:
+            features.append("male")
+        
+        # 其他特征
+        if "长发" in description:
+            features.append("long hair")
+        elif "短发" in description:
+            features.append("short hair")
+        
+        return ", ".join(features) if features else "person"
+    
+    def extract_key_scenes_from_segment(self, segment_content: str, segment_num: int, num_scenes: int) -> list:
+        """
+        从segment内容中提取关键场景
+        
+        Args:
+            segment_content: 片段内容
+            segment_num: 片段编号
+            num_scenes: 要提取的场景数量
+            
+        Returns:
+            关键场景列表
+        """
+        # 使用AI提取关键场景
+        prompt = f"""
+从以下故事片段中提取{num_scenes}个最具视觉冲击力的关键场景，用于生成插画。
+
+片段内容：
+{segment_content[:2000]}...
+
+请返回JSON格式：
+[
+  {{
+    "description": "场景的视觉描述",
+    "emotion": "场景的情感氛围",
+    "key_elements": ["关键元素1", "关键元素2"],
+    "color_mood": "色调氛围"
+  }}
+]
+"""
+        
+        try:
+            response = self.gemini_client.generate_content(prompt)
+            
+            # 解析JSON
+            import json
+            import re
+            
+            json_match = re.search(r'\[.*?\]', response, re.DOTALL)
+            if json_match:
+                scenes = json.loads(json_match.group())
+                return scenes[:num_scenes]
+        except:
+            pass
+        
+        # 如果AI提取失败，使用默认场景
+        return [{
+            "description": f"片段{segment_num}的关键时刻",
+            "emotion": "dramatic",
+            "key_elements": ["character", "emotion"],
+            "color_mood": "moody"
+        }]
+    
+    def generate_sd_prompt_for_scene(self, scene: dict, character_profiles: dict, 
+                                     segment_num: int, scene_idx: int) -> str:
+        """
+        为场景生成SD提示词
+        
+        Args:
+            scene: 场景信息
+            character_profiles: 角色特征
+            segment_num: 片段编号
+            scene_idx: 场景索引
+            
+        Returns:
+            SD提示词
+        """
+        # 基础提示词模板
+        base_prompt = "masterpiece, best quality, ultra-detailed, illustration"
+        
+        # 添加角色特征（保持一致性）
+        if character_profiles:
+            # 取第一个主要角色
+            main_char = list(character_profiles.values())[0]
+            char_features = main_char.get("sd_features", "")
+            if char_features:
+                base_prompt += f", {char_features}"
+        
+        # 添加场景描述
+        scene_desc = scene.get("description", "")
+        if scene_desc:
+            # 这里可以调用翻译API或使用预定义映射
+            base_prompt += f", {self.translate_to_sd_style(scene_desc)}"
+        
+        # 添加情感氛围
+        emotion = scene.get("emotion", "")
+        emotion_mapping = {
+            "dramatic": "dramatic lighting, intense atmosphere",
+            "sad": "melancholic mood, soft lighting",
+            "happy": "bright, cheerful atmosphere",
+            "tense": "tension, dramatic shadows",
+            "peaceful": "serene, calm atmosphere"
+        }
+        if emotion in emotion_mapping:
+            base_prompt += f", {emotion_mapping[emotion]}"
+        
+        # 添加色调
+        color_mood = scene.get("color_mood", "")
+        if color_mood:
+            base_prompt += f", {color_mood} color palette"
+        
+        # 添加风格标签
+        base_prompt += ", cinematic composition, emotional storytelling"
+        
+        # 负面提示词
+        negative_prompt = "low quality, blurry, deformed, ugly, bad anatomy"
+        
+        return {
+            "positive": base_prompt,
+            "negative": negative_prompt
+        }
+    
+    def translate_to_sd_style(self, chinese_desc: str) -> str:
+        """
+        将中文描述翻译为SD风格（简化版）
+        
+        Args:
+            chinese_desc: 中文描述
+            
+        Returns:
+            SD风格描述
+        """
+        # 这里应该调用翻译API，现在用简单映射
+        if len(chinese_desc) > 50:
+            return "complex scene with multiple elements"
+        else:
+            return "focused scene"
+    
+    def save_prompts_as_markdown(self, prompts: list, character_profiles: dict):
+        """
+        将提示词保存为Markdown格式
+        
+        Args:
+            prompts: 提示词列表
+            character_profiles: 角色特征
+        """
+        markdown_file = self.final_dir / "sd_prompts_v2.md"
+        with open(markdown_file, 'w', encoding='utf-8') as f:
+            f.write("# SD图片提示词（优化版）\n\n")
+            f.write(f"生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+            
+            # 角色特征
+            f.write("## 角色特征\n\n")
+            for name, profile in character_profiles.items():
+                f.write(f"### {name}\n")
+                f.write(f"- 视觉描述：{profile.get('visual_description', '')}\n")
+                f.write(f"- SD特征：{profile.get('sd_features', '')}\n\n")
+            
+            # 场景提示词
+            f.write("## 场景提示词\n\n")
+            current_segment = 0
+            for prompt in prompts:
+                if prompt['segment'] != current_segment:
+                    current_segment = prompt['segment']
+                    f.write(f"\n### 片段 {current_segment}\n\n")
+                
+                f.write(f"#### 场景 {prompt['scene_index']}\n")
+                f.write(f"- **描述**：{prompt['scene_description']}\n")
+                f.write(f"- **情感**：{prompt['emotion']}\n")
+                f.write(f"- **正面提示词**：\n```\n{prompt['sd_prompt']['positive']}\n```\n")
+                f.write(f"- **负面提示词**：\n```\n{prompt['sd_prompt']['negative']}\n```\n\n")
+        
+        logger.info(f"📝 Markdown格式提示词已保存到: {markdown_file}")
+    
     def generate_image_prompts(self) -> bool:
         """为每个故事片段生成SD图片提示词（优化版：批量生成）
         
@@ -1524,16 +2159,25 @@ Final Story Sample
         Returns:
             章节名称
         """
-        if segment_num <= 4:
-            return "Chapter One: Beginning"
-        elif segment_num <= 13:
-            return "Chapter Two: Development"
-        elif segment_num <= 19:
-            return "Chapter Three: Conflict Escalation"
-        elif segment_num <= 26:
-            return "Chapter Four: Climax"
+        if self.num_segments == 9:
+            # 9片段对应9步结构
+            step_names = ['钩子开场', '角色与动机', '意外转折', '尝试与失败', 
+                         '情绪低谷', '顿悟与转变', '最终行动', '胜利的代价', '新的悬念']
+            if segment_num <= len(step_names):
+                return step_names[segment_num - 1]
+            return "未知章节"
         else:
-            return "Chapter Five: Resolution"
+            # 30片段的原始逻辑
+            if segment_num <= 4:
+                return "Chapter One: Beginning"
+            elif segment_num <= 13:
+                return "Chapter Two: Development"
+            elif segment_num <= 19:
+                return "Chapter Three: Conflict Escalation"
+            elif segment_num <= 26:
+                return "Chapter Four: Climax"
+            else:
+                return "Chapter Five: Resolution"
     
     def _extract_characters_from_framework(self, framework_content: str) -> list:
         """从framework中提取角色信息
@@ -1844,18 +2488,30 @@ Final Story Sample
                 }
                 
                 # 特殊场景标记
-                if segment_num == 1:
-                    segment_data["scene_type"] = "opening_hook"
-                elif segment_num in [5, 14, 20]:  # 关键转折点
-                    segment_data["scene_type"] = "major_turning_point"
-                elif segment_num in [18]:  # 最低点
-                    segment_data["scene_type"] = "lowest_point"
-                elif segment_num in [24, 25, 26]:  # 高潮
-                    segment_data["scene_type"] = "climax"
-                elif segment_num == 30:
-                    segment_data["scene_type"] = "epilogue"
+                if self.num_segments == 9:
+                    # 9片段的场景类型
+                    scene_types = {
+                        1: "opening_hook",        # 钩子开场
+                        3: "major_turning_point", # 意外转折
+                        5: "lowest_point",        # 情绪低谷
+                        7: "climax",             # 最终行动
+                        9: "epilogue"            # 新的悬念
+                    }
+                    segment_data["scene_type"] = scene_types.get(segment_num, "regular")
                 else:
-                    segment_data["scene_type"] = "regular"
+                    # 30片段的原始标记逻辑
+                    if segment_num == 1:
+                        segment_data["scene_type"] = "opening_hook"
+                    elif segment_num in [5, 14, 20]:  # 关键转折点
+                        segment_data["scene_type"] = "major_turning_point"
+                    elif segment_num in [18]:  # 最低点
+                        segment_data["scene_type"] = "lowest_point"
+                    elif segment_num in [24, 25, 26]:  # 高潮
+                        segment_data["scene_type"] = "climax"
+                    elif segment_num == 30:
+                        segment_data["scene_type"] = "epilogue"
+                    else:
+                        segment_data["scene_type"] = "regular"
                 
                 all_segments_data.append(segment_data)
             
@@ -1991,8 +2647,8 @@ Final Story Sample
                 logger.error("❌ 框架生成失败，流程终止")
                 return False
             
-            # 第三阶段：分段生成
-            segments = self.phase3_generate_segments(story_dna, framework)
+            # 第三阶段：分段生成（使用简化版）
+            segments = self.phase3_generate_segments_simple(story_dna, framework)
             if not segments:
                 logger.error("❌ 片段生成失败，流程终止")
                 return False
@@ -2006,9 +2662,9 @@ Final Story Sample
             # 生成报告
             self.generate_final_report()
             
-            # 生成SD图片提示词
+            # 生成SD图片提示词（使用优化版）
             logger.info("🎨 生成SD图片提示词...")
-            self.generate_image_prompts()
+            self.generate_image_prompts_v2()
             
             # 计算总耗时
             elapsed_time = time.time() - start_time
@@ -2032,6 +2688,8 @@ def main():
     parser.add_argument('video_id', help='YouTube视频ID')
     parser.add_argument('creator_name', help='创作者名称')
     parser.add_argument('--length', type=int, default=30000, help='目标故事长度（默认30000字）')
+    parser.add_argument('--segments', type=int, default=9, help='片段数量（默认9个，对应9步结构）')
+    parser.add_argument('--images-per-segment', type=int, default=1, help='每个片段生成的图片数量（默认1张）')
     parser.add_argument('--sd-prompt', type=str, default='prompts/sd_image_generator_v2.md',
                        help='SD提示词生成的prompt文件路径（默认使用v2版本）')
     
@@ -2042,7 +2700,9 @@ def main():
         video_id=args.video_id,
         creator_name=args.creator_name,
         target_length=args.length,
-        sd_prompt_file=args.sd_prompt
+        num_segments=args.segments,
+        sd_prompt_file=args.sd_prompt,
+        images_per_segment=args.images_per_segment
     )
     
     success = creator.run()
