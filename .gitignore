@@ -1,0 +1,8 @@
+story_result/*
+subtitles/*
+tmp/*
+venv/
+*.log
+log/*
+logs/*
+__pycache__/
