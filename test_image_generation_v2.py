@@ -168,15 +168,6 @@ def test_complete_flow():
     
     if success:
         print("\n✅ 图片生成流程测试成功！")
-        
-        # 检查输出文件
-        json_file = final_dir / "sd_prompts_v2.json"
-        md_file = final_dir / "sd_prompts_v2.md"
-        
-        if json_file.exists():
-            print(f"  - JSON文件已生成: {json_file}")
-        if md_file.exists():
-            print(f"  - Markdown文件已生成: {md_file}")
     else:
         print("\n❌ 图片生成流程测试失败")
     

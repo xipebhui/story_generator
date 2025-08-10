@@ -24,6 +24,7 @@ sys.path.insert(0, str(project_root))
 from youtube_client import YouTubeAPIClient
 from gemini_client import GeminiClient
 from text_processor import TextProcessor
+from image_prompt_generator import ImagePromptGenerator
 
 # 配置日志
 # 清除默认配置
@@ -127,7 +128,7 @@ class ContextManager:
 class YouTubeStoryCreatorV2:
     """新版YouTube故事创作器 - 专注于30000字长故事"""
     
-    def __init__(self, video_id: str, creator_name: str, target_length: int = 30000, sd_prompt_file: str = None, num_segments: int = 9, images_per_segment: int = 1):
+    def __init__(self, video_id: str, creator_name: str, target_length: int = 30000, num_segments: int = 9):
         """
         初始化
         
@@ -135,16 +136,12 @@ class YouTubeStoryCreatorV2:
             video_id: YouTube视频ID
             creator_name: 创作者名称
             target_length: 目标故事长度（默认30000字）
-            sd_prompt_file: SD提示词生成的prompt文件路径
             num_segments: 片段数量（默认9个，对应9步结构）
-            images_per_segment: 每个片段生成的图片数量（默认1张）
         """
         self.video_id = video_id
         self.creator_name = creator_name
         self.target_length = target_length
         self.num_segments = num_segments  # 默认9个片段
-        self.images_per_segment = images_per_segment  # 每个片段的图片数
-        self.sd_prompt_file = sd_prompt_file or "prompts/sd_image_generator_v2.md"
         
         # 创建输出目录
         self.output_dir = Path("story_result") / creator_name / video_id
@@ -721,6 +718,9 @@ class YouTubeStoryCreatorV2:
         framework_summary = self.extract_framework_summary(framework)
         segment_tasks = self.extract_segment_tasks(framework)
         
+        # 2. 提取9步框架的完整内容
+        framework_steps = self.extract_9steps_full_content(framework)
+        
         segments = []
         
         for i in range(1, self.num_segments + 1):
@@ -737,12 +737,17 @@ class YouTubeStoryCreatorV2:
                 except Exception as e:
                     logger.warning(f"⚠️ 读取片段 {i} 失败: {e}")
             
-            # 2. 构建输入（完全手动控制）
+            # 3. 获取当前片段对应的框架内容
+            segment_task = segment_tasks.get(i, {})
+            # 直接使用框架中对应步骤的原始内容
+            segment_task['framework_step_content'] = framework_steps.get(i, f"- **段落编号：** 第 {i} 段")
+            
+            # 4. 构建输入（完全手动控制）
             segment_input = self.build_segment_input_simple(
                 segment_num=i,
                 framework_summary=framework_summary,
                 previous_text=segments[-1][-500:] if segments else "",
-                segment_task=segment_tasks.get(i, {})
+                segment_task=segment_task
             )
             
             # 3. 生成片段（独立的API调用）
@@ -828,13 +833,46 @@ class YouTubeStoryCreatorV2:
 ==================================================
 **本段任务卡 (Current Segment Task Card)**
 ==================================================
-- **段落编号：** 第 {segment_num} 段
-- **章节归属：** {segment_task.get('chapter', '发展')}
-- **本段核心任务：** {segment_task.get('task', '继续推进故事')}
-- **节奏与字数指引：** {segment_task.get('rhythm', '正常节奏')}
+{segment_task.get('framework_step_content', f"- **段落编号：** 第 {segment_num} 段")}
 """
         
         return input_text
+    
+    def extract_9steps_full_content(self, framework: str) -> dict:
+        """
+        从框架中提取9步的完整内容（保持原始格式）
+        
+        Args:
+            framework: 框架文本
+            
+        Returns:
+            {step_num: full_content} 字典
+        """
+        import re
+        
+        steps_content = {}
+        
+        # 查找"B. 故事蓝图"部分
+        blueprint_match = re.search(r'## B\. 故事蓝图.*?\n(.*?)(?=##|$)', framework, re.DOTALL)
+        if not blueprint_match:
+            # 如果没找到，尝试其他格式
+            blueprint_match = re.search(r'故事蓝图.*?\n(.*?)(?=##|$)', framework, re.DOTALL)
+        
+        if blueprint_match:
+            blueprint_text = blueprint_match.group(1)
+            
+            # 匹配每个步骤，保持原始格式
+            # 格式: - **N. 步骤名称 (英文)：**
+            pattern = r'(- \*\*(\d+)\. [^*]+\*\*.*?)(?=- \*\*\d+\.|$)'
+            
+            matches = re.findall(pattern, blueprint_text, re.DOTALL)
+            
+            for full_match, step_num in matches:
+                step_num = int(step_num)
+                # 保存完整内容，保持原始格式
+                steps_content[step_num] = full_match.strip()
+        
+        return steps_content
     
     def extract_framework_summary(self, framework: str) -> str:
         """
@@ -901,10 +939,23 @@ class YouTubeStoryCreatorV2:
             for i in range(1, 10):
                 if i <= len(step_names):
                     step_name = step_names[i-1]
-                    tasks[i] = {
+                    step_data = step_contents.get(step_name, {})
+                    task_info = {
                         'chapter': step_name,
-                        'task': step_contents.get(step_name, {}).get('情节规划', f'{step_name}阶段')
+                        'task': step_data.get('情节规划', f'{step_name}阶段')
                     }
+                    
+                    # 添加节奏与字数信息
+                    if '节奏与字数' in step_data:
+                        task_info['rhythm'] = step_data['节奏与字数']
+                    
+                    # 添加具体字数范围
+                    if '字数范围' in step_data:
+                        min_words, max_words = step_data['字数范围']
+                        task_info['word_count_range'] = (min_words, max_words)
+                        task_info['target_words'] = (min_words + max_words) // 2  # 目标字数取中间值
+                    
+                    tasks[i] = task_info
         else:
             # 如果是其他数量的片段，使用比例分配
             # 30片段的原始映射
@@ -927,11 +978,22 @@ class YouTubeStoryCreatorV2:
                 
                 for (start, end), (step_name, rhythm, words) in MAPPING_30.items():
                     if start <= position_30 <= end:
-                        tasks[segment] = {
+                        step_data = step_contents.get(step_name, {})
+                        task_info = {
                             'chapter': step_name,
-                            'task': step_contents.get(step_name, {}).get('情节规划', f'{step_name}阶段'),
-                            'rhythm': f"{rhythm}。约{words}字"
+                            'task': step_data.get('情节规划', f'{step_name}阶段'),
+                            'rhythm': step_data.get('节奏与字数', f"{rhythm}。约{words}字")
                         }
+                        
+                        # 如果框架中有具体字数范围，使用框架的；否则使用默认值
+                        if '字数范围' in step_data:
+                            min_words, max_words = step_data['字数范围']
+                            task_info['word_count_range'] = (min_words, max_words)
+                            task_info['target_words'] = (min_words + max_words) // 2
+                        else:
+                            task_info['target_words'] = words
+                        
+                        tasks[segment] = task_info
                         break
         
         return tasks
@@ -964,15 +1026,34 @@ class YouTubeStoryCreatorV2:
         import re
         steps = {}
         
-        # 匹配每个步骤的内容
+        # 更完整的模式匹配，同时提取情节规划和节奏与字数
         # 格式: **1. 钩子开场 (Hook)：**
         #       - **情节规划：** [内容]
-        pattern = r'\*\*\d+\.\s+([^(]+)\s*\([^)]+\)：\*\*[^\n]*\n\s*-\s*\*\*情节规划：\*\*\s*([^\n]+)'
+        #       - **节奏与字数：** [内容]
+        pattern = r'\*\*(\d+)\.\s+([^(]+)\s*\([^)]+\)：\*\*([^*]*?)(?=\*\*\d+\.|$)'
         
-        matches = re.findall(pattern, framework)
-        for step_name, plot in matches:
+        matches = re.findall(pattern, framework, re.DOTALL)
+        for step_num, step_name, content in matches:
             step_name = step_name.strip()
-            steps[step_name] = {'情节规划': plot.strip()}
+            steps[step_name] = {}
+            
+            # 提取情节规划
+            plot_match = re.search(r'\*\*情节规划：\*\*\s*([^\n]+(?:\n(?!\s*-\s*\*\*)[^\n]+)*)', content)
+            if plot_match:
+                steps[step_name]['情节规划'] = plot_match.group(1).strip()
+            
+            # 提取节奏与字数
+            rhythm_match = re.search(r'\*\*节奏与字数：\*\*\s*([^\n]+)', content)
+            if rhythm_match:
+                rhythm_text = rhythm_match.group(1).strip()
+                steps[step_name]['节奏与字数'] = rhythm_text
+                
+                # 提取具体字数范围
+                word_count_match = re.search(r'(\d+)[-–](\d+)\s*字', rhythm_text)
+                if word_count_match:
+                    min_words = int(word_count_match.group(1))
+                    max_words = int(word_count_match.group(2))
+                    steps[step_name]['字数范围'] = (min_words, max_words)
         
         # 如果上面的模式匹配失败，尝试更简单的模式
         if not steps:
@@ -1032,7 +1113,7 @@ class YouTubeStoryCreatorV2:
     
     def phase5_polish(self, framework: str, draft: str) -> str:
         """
-        第五阶段：最终润色
+        第五阶段：最终润色（使用中文版本）
         如果已有润色结果，则从文件加载
         
         Args:
@@ -1042,7 +1123,7 @@ class YouTubeStoryCreatorV2:
         Returns:
             润色后的故事
         """
-        logger.info("✨ 第五阶段：开始最终润色...")
+        logger.info("✨ 第五阶段：开始最终润色（中文版）...")
         
         # 检查是否已有润色结果
         polished_file = self.processing_dir / "4_polished.txt"
@@ -1065,7 +1146,7 @@ class YouTubeStoryCreatorV2:
         
         # 需要重新润色
         # 构建输入
-        polish_input = self.text_processor.format_polish_input(framework, draft)
+        polish_input = self.text_processor.format_polish_input(framework, draft, num_segments=self.num_segments)
         
         # 构建完整提示
         full_prompt = f"{self.prompts['final_polisher']}\n\n---\n\n{polish_input}"
@@ -1694,82 +1775,41 @@ Final Story Sample
     def generate_image_prompts_v2(self) -> bool:
         """
         优化版SD图片提示词生成
-        1. 从框架提取角色特征
-        2. 从每个segment内容提取关键画面
-        3. 结合角色特征生成SD提示词
+        使用新的独立模块 ImagePromptGenerator
         
         Returns:
             bool: 成功返回true，失败返回false
         """
         try:
-            logger.info(f"🎨 开始生成SD图片提示词（优化版，每片段{self.images_per_segment}张）...")
+            logger.info(f"🎨 开始生成SD图片提示词（使用新模块，每片段{self.images_per_segment}张）...")
             
-            # 1. 读取框架文件，提取角色特征
-            framework_file = self.processing_dir / "2_framework.txt"
-            if not framework_file.exists():
-                logger.error(f"框架文件不存在: {framework_file}")
-                return False
+            # 使用新的ImagePromptGenerator模块
+            generator = ImagePromptGenerator(
+                creator_name=self.creator_name,
+                video_id=self.video_id,
+                sd_prompt_file=self.sd_prompt_file,
+                images_per_segment=self.images_per_segment
+            )
             
-            with open(framework_file, 'r', encoding='utf-8') as f:
-                framework_content = f.read()
+            # 生成所有片段的提示词
+            results = generator.generate_for_segments()
             
-            # 提取角色特征（保持视觉一致性）
-            character_profiles = self.extract_character_profiles(framework_content)
-            logger.info(f"✅ 提取到{len(character_profiles)}个角色特征")
+            # 保存结果
+            generator.save_results(results)
             
-            # 2. 处理每个片段
-            all_image_prompts = []
+            # 统计信息
+            total_prompts = results.get("total_prompts", 0)
+            total_segments = results.get("total_segments", 0)
             
-            for segment_num in range(1, self.num_segments + 1):
-                segment_file = self.segments_dir / f"segment_{segment_num:02d}.txt"
+            if total_prompts > 0:
+                logger.info(f"✅ 成功处理 {total_segments} 个片段，生成 {total_prompts} 个SD提示词")
+                logger.info(f"💾 结果已保存到: {generator.final_dir}")
                 
-                if not segment_file.exists():
-                    logger.warning(f"片段{segment_num}不存在，跳过")
-                    continue
-                
-                with open(segment_file, 'r', encoding='utf-8') as f:
-                    segment_content = f.read()
-                
-                # 3. 从segment内容提取关键画面
-                key_scenes = self.extract_key_scenes_from_segment(
-                    segment_content, 
-                    segment_num,
-                    self.images_per_segment
-                )
-                
-                # 4. 为每个关键画面生成SD提示词
-                for scene_idx, scene in enumerate(key_scenes, 1):
-                    sd_prompt = self.generate_sd_prompt_for_scene(
-                        scene,
-                        character_profiles,
-                        segment_num,
-                        scene_idx
-                    )
-                    
-                    all_image_prompts.append({
-                        "segment": segment_num,
-                        "scene_index": scene_idx,
-                        "scene_description": scene.get("description", ""),
-                        "emotion": scene.get("emotion", ""),
-                        "sd_prompt": sd_prompt
-                    })
-                
-                logger.info(f"✅ 片段{segment_num}生成了{len(key_scenes)}个场景提示词")
-            
-            # 5. 保存所有提示词
-            if all_image_prompts:
-                output_file = self.final_dir / "sd_prompts_v2.json"
-                with open(output_file, 'w', encoding='utf-8') as f:
-                    json.dump({
-                        "character_profiles": character_profiles,
-                        "total_images": len(all_image_prompts),
-                        "images": all_image_prompts
-                    }, f, ensure_ascii=False, indent=2)
-                
-                logger.info(f"💾 SD提示词已保存到: {output_file}")
-                
-                # 生成Markdown格式
-                self.save_prompts_as_markdown(all_image_prompts, character_profiles)
+                # 检查是否有错误
+                if "segments" in results:
+                    errors = [k for k, v in results["segments"].items() if "error" in v]
+                    if errors:
+                        logger.warning(f"⚠️ {len(errors)} 个片段处理失败: {errors}")
                 
                 return True
             else:
@@ -2662,9 +2702,9 @@ Final Story Sample
             # 生成报告
             self.generate_final_report()
             
-            # 生成SD图片提示词（使用优化版）
-            logger.info("🎨 生成SD图片提示词...")
-            self.generate_image_prompts_v2()
+            # 已移除生图部分，如需生成图片提示词请单独运行 generate_image_prompts.py
+            logger.info("✅ 故事生成完成！如需生成图片提示词，请运行：")
+            logger.info(f"   python generate_image_prompts.py --creator {self.creator_name} --video {self.video_id} --generator_type jimeng")
             
             # 计算总耗时
             elapsed_time = time.time() - start_time
@@ -2689,9 +2729,6 @@ def main():
     parser.add_argument('creator_name', help='创作者名称')
     parser.add_argument('--length', type=int, default=30000, help='目标故事长度（默认30000字）')
     parser.add_argument('--segments', type=int, default=9, help='片段数量（默认9个，对应9步结构）')
-    parser.add_argument('--images-per-segment', type=int, default=1, help='每个片段生成的图片数量（默认1张）')
-    parser.add_argument('--sd-prompt', type=str, default='prompts/sd_image_generator_v2.md',
-                       help='SD提示词生成的prompt文件路径（默认使用v2版本）')
     
     args = parser.parse_args()
     
@@ -2700,9 +2737,7 @@ def main():
         video_id=args.video_id,
         creator_name=args.creator_name,
         target_length=args.length,
-        num_segments=args.segments,
-        sd_prompt_file=args.sd_prompt,
-        images_per_segment=args.images_per_segment
+        num_segments=args.segments
     )
     
     success = creator.run()

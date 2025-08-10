@@ -2,7 +2,14 @@
   "permissions": {
     "allow": [
       "Bash(python test:*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(python test:*)",
+      "Bash(python generate_image_prompts.py:*)",
+      "mcp__playwright__browser_evaluate",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_click",
+      "Bash(grep:*)",
+      "Bash(python:*)"
     ],
     "deny": []
   }
