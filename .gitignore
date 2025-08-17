@@ -6,3 +6,6 @@ venv/
 log/*
 logs/*
 __pycache__/
+output/
+.venv/
+story_v3/

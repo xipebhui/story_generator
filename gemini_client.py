@@ -142,7 +142,7 @@ class GeminiClient:
         if use_file_for_long_content and len(prompt) > 30000:
             logger.info(f"Prompt is very long ({len(prompt)} chars), using inline data method")
             return self._generate_with_file_upload(prompt)
-        
+        logger.info(f"input apikey = {self.api_key}")
         url = f"{self.base_url}/v1beta/models/{self.model}:generateContent?key={self.api_key}"
         
         payload = {
@@ -241,7 +241,7 @@ def main():
         else:
             logger.error("Failed to get analysis from Gemini.")
             exit(1)
-            
+
     except ValueError as e:
         logger.error(e)
         exit(1)

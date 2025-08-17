@@ -521,12 +521,12 @@ class YouTubeStoryCreatorV2:
     
     def phase3_generate_segments(self, story_dna: str, framework: str) -> List[str]:
         """
-        第三阶段：分段生成30个片段
+        第三阶段：分段生9个片段
         支持断点续传：已生成的片段会从文件加载
         
         Args:
             story_dna: 故事DNA
-            framework: 30个片段的框架
+            framework: 9个片段的框架
             
         Returns:
             生成的片段列表

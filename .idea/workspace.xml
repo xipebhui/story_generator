@@ -4,7 +4,50 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="b06674bc-41ad-4cbf-b795-3fc27c1ebd5f" name="更改" comment="x" />
+    <list default="true" id="b06674bc-41ad-4cbf-b795-3fc27c1ebd5f" name="更改" comment="x">
+      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/story_generator.iml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/batch_metadata_extractor.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/metadata_extractor_usage.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/story_creator_v3_usage.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/video_generate.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/draft_gen/draft_meta_info.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/draft_gen/draft_settings" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/draft_gen/generateDraftService.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/draft_gen/models/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/draft_gen/models/draft_effects_library.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/draft_gen/models/draft_models.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/draft_gen/models/draft_templates.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/prompts/channel_generator.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/prompts/dna_extractor2.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/prompts/fra,ewprl+gemeratev2.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/prompts/framework_generatorv3.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/prompts/story_generation_ascii.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/test_v3.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/video_list_example.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/voice_gen/async_tts_client.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/voice_gen/tts_client.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/youtube_metadata_extractor.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/youtube_story_creator_v3.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.env" beforeDir="false" afterPath="$PROJECT_DIR$/.env" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/shelf/在变基之前未提交的更改_[更改]/shelved.patch" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/gemini_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/gemini_client.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/prompts/segment_generator.md" beforeDir="false" afterPath="$PROJECT_DIR$/prompts/segment_generator.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/test_debug_logging.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/test_image_generation_v2.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/test_image_prompt_generator.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/test_jimeng_generator.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/test_simple_generation.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/test_three_step_flow.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/text_processor.py" beforeDir="false" afterPath="$PROJECT_DIR$/text_processor.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tts_client.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/youtube_story_creator_v2.py" beforeDir="false" afterPath="$PROJECT_DIR$/youtube_story_creator_v2.py" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -24,19 +67,31 @@
   &quot;associatedIndex&quot;: 8
 }</component>
   <component name="ProjectId" id="310fjPSmW2GRiw8FmFeECD4gGs8" />
+  <component name="ProjectLevelVcsManager">
+    <ConfirmationsSetting value="2" id="Add" />
+  </component>
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
+    "ASKED_MARK_IGNORED_FILES_AS_EXCLUDED": "true",
     "ModuleVcsDetector.initialDetectionPerformed": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
     "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "master",
     "last_opened_file_path": "/Users/pengfei.shi/workspace/youtube/story_generator"
   }
 }]]></component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/output/images" />
+      <recent name="$PROJECT_DIR$/draft_gen" />
+      <recent name="$PROJECT_DIR$/voice_gen" />
+    </key>
+  </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>

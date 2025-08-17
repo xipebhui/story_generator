@@ -1,0 +1,15 @@
+# YouTube视频ID列表示例
+# 每行一个视频ID或完整URL
+# 以#开头的行会被忽略
+
+# 直接使用视频ID
+dQw4w9WgXcQ
+9bZkp7q19f0
+kJQP7kiw5Fk
+
+# 或使用完整URL
+https://www.youtube.com/watch?v=jNQXAC9IVRw
+https://youtu.be/L_jWHffIx5E
+
+# 支持带参数的URL（会自动提取视频ID）
+https://www.youtube.com/watch?v=fJ9rUzIMcZQ&list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf
