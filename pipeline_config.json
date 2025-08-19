@@ -1,0 +1,229 @@
+{
+  "pipelines": {
+    "story_generation_v3": {
+      "name": "YouTube Story Generation V3 Pipeline",
+      "description": "V3 Pipeline with framework_generatorv3 and strict mode",
+      "strict_mode": true,
+      "steps": [
+        {
+          "name": "fetch_youtube_data_v3",
+          "class": "FetchYouTubeDataV3Step",
+          "enabled": true,
+          "cache": true
+        },
+        {
+          "name": "generate_framework_v3",
+          "class": "GenerateFrameworkV3Step",
+          "enabled": true,
+          "cache": true,
+          "prompt": "framework_generatorv3"
+        },
+        {
+          "name": "parse_framework_v3",
+          "class": "ParseFrameworkV3Step",
+          "enabled": true
+        },
+        {
+          "name": "generate_story_header",
+          "class": "GenerateStoryHeaderStep",
+          "enabled": true,
+          "cache": true,
+          "prompt": "story_header"
+        },
+        {
+          "name": "generate_all_segments",
+          "class": "GenerateAllSegmentsStep",
+          "enabled": true,
+          "cache": true,
+          "prompt": "segment_generator"
+        },
+        {
+          "name": "merge_and_polish",
+          "class": "MergeAndPolishStep",
+          "enabled": true,
+          "cache": true,
+          "prompt": "final_polisher"
+        },
+        {
+          "name": "generate_summary",
+          "class": "GenerateSummaryStep",
+          "enabled": true,
+          "cache": true
+        },
+        {
+          "name": "save_final_output",
+          "class": "SaveFinalOutputStep",
+          "enabled": true
+        }
+      ]
+    },
+    "story_generation": {
+      "name": "YouTube Story Generation Pipeline",
+      "description": "Complete pipeline for generating stories from YouTube videos",
+      "steps": [
+        {
+          "name": "fetch_youtube_data",
+          "class": "FetchYouTubeDataStep",
+          "enabled": true,
+          "cache": true,
+          "retry": 3
+        },
+        {
+          "name": "extract_dna",
+          "class": "ExtractDNAStep",
+          "enabled": true,
+          "cache": true,
+          "prompt": "dna_extractor"
+        },
+        {
+          "name": "generate_framework",
+          "class": "GenerateFrameworkStep",
+          "enabled": true,
+          "cache": true,
+          "prompt": "framework_generator"
+        },
+        {
+          "name": "generate_segments",
+          "class": "GenerateSegmentsStep",
+          "enabled": true,
+          "cache": true,
+          "prompt": "segment_generator",
+          "strategy": "simple"
+        },
+        {
+          "name": "polish_story",
+          "class": "PolishStoryStep",
+          "enabled": true,
+          "cache": true,
+          "prompt": "final_polisher"
+        },
+        {
+          "name": "generate_report",
+          "class": "GenerateReportStep",
+          "enabled": true,
+          "cache": false
+        }
+      ]
+    },
+    "quick_generation": {
+      "name": "Quick Story Generation",
+      "description": "Faster pipeline skipping some steps",
+      "steps": [
+        {
+          "name": "fetch_youtube_data",
+          "class": "FetchYouTubeDataStep"
+        },
+        {
+          "name": "extract_dna",
+          "class": "ExtractDNAStep"
+        },
+        {
+          "name": "generate_segments",
+          "class": "GenerateSegmentsStep",
+          "strategy": "fast"
+        }
+      ]
+    }
+  },
+  "prompts": {
+    "framework_generatorv3": {
+      "file": "prompts/framework_generatorv3.md",
+      "version": "3.0",
+      "max_tokens": 4000,
+      "temperature": 0.8,
+      "output_format": "json",
+      "variables": []
+    },
+    "story_header": {
+      "file": "prompts/story_header.md",
+      "version": "1.0",
+      "max_tokens": 500,
+      "temperature": 0.9,
+      "variables": ["framework_json"]
+    },
+    "dna_extractor": {
+      "file": "prompts/dna_extractor.md",
+      "version": "1.0",
+      "max_tokens": 2000,
+      "temperature": 0.7,
+      "variables": ["story_text"]
+    },
+    "framework_generator": {
+      "file": "prompts/framework_generate.md",
+      "version": "2.1",
+      "max_tokens": 3000,
+      "temperature": 0.8,
+      "variables": ["story_dna", "video_info", "comments"]
+    },
+    "segment_generator": {
+      "file": "prompts/segment_generator.md",
+      "version": "1.0",
+      "max_tokens": 1500,
+      "temperature": 0.9,
+      "variables": ["framework_summary", "previous_segment", "segment_task"]
+    },
+    "final_polisher": {
+      "file": "prompts/final_polish.md",
+      "version": "1.0",
+      "max_tokens": 35000,
+      "temperature": 0.7,
+      "variables": ["framework", "draft"]
+    }
+  },
+  "strategies": {
+    "segment_generation": {
+      "simple": {
+        "description": "Generate each segment independently",
+        "context_size": 500,
+        "parallel": false
+      },
+      "contextual": {
+        "description": "Use full conversation history",
+        "context_size": 2000,
+        "parallel": false
+      },
+      "fast": {
+        "description": "Generate segments in parallel",
+        "context_size": 300,
+        "parallel": true
+      }
+    },
+    "formatting": {
+      "default": {
+        "type": "plain"
+      },
+      "structured": {
+        "type": "markdown",
+        "separator": "=",
+        "separator_length": 50
+      },
+      "narrative": {
+        "type": "story",
+        "include_context": true
+      }
+    }
+  },
+  "cache": {
+    "enabled": true,
+    "directory": "story_result",
+    "ttl_hours": 24,
+    "max_size_mb": 1000
+  },
+  "api_settings": {
+    "gemini": {
+      "timeout": 60,
+      "retry": 3,
+      "delay_between_calls": 2
+    },
+    "youtube": {
+      "timeout": 30,
+      "retry": 2
+    }
+  },
+  "output": {
+    "formats": ["txt", "md", "json"],
+    "include_metadata": true,
+    "generate_report": true,
+    "save_intermediate": true
+  }
+}
