@@ -18,6 +18,11 @@ sys.path.insert(0, str(project_root))
 
 from pipeline_architecture import Pipeline, PipelineStep, PromptManager
 from pipeline_context_v3 import PipelineContextV3
+# 分别导入模块，确保所有步骤都被正确加载
+import pipeline_steps_v3
+import pipeline_steps_youtube_metadata
+
+# 从模块中导入类
 from pipeline_steps_v3 import (
     FetchYouTubeDataV3Step,
     GenerateFrameworkV3Step,
@@ -28,6 +33,7 @@ from pipeline_steps_v3 import (
     GenerateSummaryStep,
     SaveFinalOutputStep
 )
+from pipeline_steps_youtube_metadata import GenerateYouTubeMetadataStep
 from youtube_client import YouTubeAPIClient
 from gemini_client import GeminiClient
 
@@ -194,6 +200,7 @@ class StoryPipelineV3Runner:
             GenerateAllSegmentsStep(self.gemini_client),
             MergeAndPolishStep(self.gemini_client),
             GenerateSummaryStep(self.gemini_client),
+            GenerateYouTubeMetadataStep(self.gemini_client),  # 新增：YouTube元数据生成
             SaveFinalOutputStep()
         ]
         

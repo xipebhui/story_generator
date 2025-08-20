@@ -802,6 +802,9 @@ class SaveFinalOutputStep(PipelineStep):
 ## 中文总结
 {context.summary_cn}
 
+## YouTube发布建议
+{ '已生成双语版本 - 请查看youtube_metadata.md' if context.youtube_metadata else '未生成'}
+
 ## 故事预览
 
 ### 开头（前500字符）

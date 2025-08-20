@@ -132,14 +132,16 @@
       "max_tokens": 4000,
       "temperature": 0.8,
       "output_format": "json",
-      "variables": []
+      "variables": [],
+      "note": "No variables - contains JSON examples with braces"
     },
     "story_header": {
       "file": "prompts/story_header.md",
       "version": "1.0",
       "max_tokens": 500,
       "temperature": 0.9,
-      "variables": ["framework_json"]
+      "variables": [],
+      "note": "No variables - takes raw JSON as input"
     },
     "dna_extractor": {
       "file": "prompts/dna_extractor.md",

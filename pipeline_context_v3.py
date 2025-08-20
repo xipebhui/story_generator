@@ -37,6 +37,7 @@ class PipelineContextV3:
     polished_story: str = ""              # 润色后的故事
     final_story: str = ""                 # 最终英文故事
     summary_cn: str = ""                  # 中文总结
+    youtube_metadata: Dict = field(default_factory=dict)  # YouTube发布元数据
     
     # ========== 元数据 ==========
     metadata: Dict[str, Any] = field(default_factory=dict)

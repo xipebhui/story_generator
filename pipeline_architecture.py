@@ -78,7 +78,13 @@ class PromptTemplate:
         
     def format(self, **kwargs) -> str:
         """格式化提示词"""
-        return self.template.format(**kwargs)
+        # 如果没有提供变量，直接返回原始模板（不进行格式化）
+        if not kwargs and not self.variables:
+            return self.template
+        # 只有在有变量时才格式化
+        if self.variables:
+            return self.template.format(**kwargs)
+        return self.template
     
     def validate_variables(self, **kwargs) -> bool:
         """验证必需的变量是否提供"""
@@ -107,9 +113,14 @@ class PromptManager:
             with open(path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # 解析变量（查找 {variable} 格式）
-            import re
-            variables = re.findall(r'\{(\w+)\}', content)
+            # 不自动解析变量，避免JSON中的花括号被误识别
+            # 变量应该在配置中明确指定
+            variables = []
+            
+            # 如果配置中指定了变量，使用配置中的
+            if name in self.prompt_configs:
+                config = self.prompt_configs[name]
+                variables = config.get('variables', [])
             
             template = PromptTemplate(content, variables)
             self.templates[name] = template
@@ -134,9 +145,12 @@ class PromptManager:
             self.load_prompt(name)
         
         template = self.templates[name]
-        if not template.validate_variables(**kwargs):
-            missing = [v for v in template.variables if v not in kwargs]
-            raise ValueError(f"Missing variables for prompt '{name}': {missing}")
+        
+        # 如果模板有变量，验证是否提供
+        if template.variables:
+            if not template.validate_variables(**kwargs):
+                missing = [v for v in template.variables if v not in kwargs]
+                raise ValueError(f"Missing variables for prompt '{name}': {missing}")
         
         return template.format(**kwargs)
     
