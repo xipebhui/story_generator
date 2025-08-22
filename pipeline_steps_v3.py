@@ -17,6 +17,7 @@ from pipeline_context_v3 import PipelineContextV3
 from youtube_client import YouTubeAPIClient
 from gemini_client import GeminiClient
 from text_processor import TextProcessor
+import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -212,6 +213,7 @@ class GenerateFrameworkV3Step(PipelineStep):
             
         except Exception as e:
             error_msg = f"Framework V3 generation failed: {e}"
+            traceback.print_exc()
             logger.error(f"❌ {error_msg}")
             context.add_error(error_msg)
             return StepResult(success=False, error=error_msg)

@@ -11,6 +11,7 @@ import shutil
 import random
 import argparse
 import zipfile
+import logging
 from typing import List, Optional
 from pathlib import Path
 
@@ -20,12 +21,20 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from pydub import AudioSegment
 from models.draft_models import (
     Draft, Track, Segment, VideoMaterial, AudioMaterial, Materials,
-    Timerange, Clip, Transition, VideoEffect
+    Timerange, Clip, Transition, VideoEffect, Keyframe, CommonKeyframe
 )
 from models.draft_effects_library import (
     Transitions, VideoEffects, SpeedInfo, CanvasInfo, MaterialAnimationInfo
 )
+from jianying_subtitle_service import get_subtitle_service
 import uuid
+
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 
 def gen_upper_uuid():
@@ -51,6 +60,9 @@ class DraftGeneratorService:
         self.available_effects = [
             VideoEffects.SNOW
         ]
+        
+        # 默认图片缩放比例
+        self.default_image_scale = 1.8
 
     def get_audio_duration_ms(self, audio_path: str) -> int:
         """获取音频时长（毫秒）"""
@@ -67,6 +79,116 @@ class DraftGeneratorService:
         # 按文件名排序
         images.sort()
         return images
+
+    def create_keyframes_for_segment(self, segment_duration_us: int, segment_index: int, image_scale: float = 1.8) -> List[CommonKeyframe]:
+        """
+        为片段创建关键帧动画
+        
+        Args:
+            segment_duration_us: 片段时长（微秒）
+            segment_index: 片段索引（用于决定动画方向）
+            image_scale: 图片缩放比例（默认1.8）
+            
+        Returns:
+            关键帧列表
+        """
+        keyframes = []
+        
+        # 根据片段索引决定动画类型
+        if segment_index % 2 == 0:
+            # 偶数索引：从上到下移动
+            # Y轴位置关键帧
+            keyframes.append(CommonKeyframe(
+                id=gen_upper_uuid(),
+                property_type="KFTypePositionY",
+                keyframe_list=[
+                    Keyframe(
+                        id=gen_upper_uuid(),
+                        time_offset=0,
+                        values=[0.8]  # 起始位置：上方
+                    ),
+                    Keyframe(
+                        id=gen_upper_uuid(),
+                        time_offset=segment_duration_us,
+                        values=[-0.8]  # 结束位置：下方
+                    )
+                ]
+            ))
+        else:
+            # 奇数索引：从下到上移动
+            # Y轴位置关键帧
+            keyframes.append(CommonKeyframe(
+                id=gen_upper_uuid(),
+                property_type="KFTypePositionY",
+                keyframe_list=[
+                    Keyframe(
+                        id=gen_upper_uuid(),
+                        time_offset=0,
+                        values=[-0.8]  # 起始位置：下方
+                    ),
+                    Keyframe(
+                        id=gen_upper_uuid(),
+                        time_offset=segment_duration_us,
+                        values=[0.8]  # 结束位置：上方
+                    )
+                ]
+            ))
+        
+        # 添加X轴位置关键帧（保持不变）
+        keyframes.append(CommonKeyframe(
+            id=gen_upper_uuid(),
+            property_type="KFTypePositionX",
+            keyframe_list=[
+                Keyframe(
+                    id=gen_upper_uuid(),
+                    time_offset=0,
+                    values=[0.0]
+                ),
+                Keyframe(
+                    id=gen_upper_uuid(),
+                    time_offset=segment_duration_us,
+                    values=[0.0]
+                )
+            ]
+        ))
+        
+        # 添加缩放关键帧（使用传入的缩放比例）
+        keyframes.append(CommonKeyframe(
+            id=gen_upper_uuid(),
+            property_type="KFTypeScaleX",
+            keyframe_list=[
+                Keyframe(
+                    id=gen_upper_uuid(),
+                    time_offset=0,
+                    values=[image_scale]
+                ),
+                Keyframe(
+                    id=gen_upper_uuid(),
+                    time_offset=segment_duration_us,
+                    values=[image_scale]
+                )
+            ]
+        ))
+        
+        # 添加旋转关键帧（保持不旋转）
+        keyframes.append(CommonKeyframe(
+            id=gen_upper_uuid(),
+            property_type="KFTypeRotation",
+            keyframe_list=[
+                Keyframe(
+                    id=gen_upper_uuid(),
+                    time_offset=0,
+                    values=[0.0]
+                ),
+                Keyframe(
+                    id=gen_upper_uuid(),
+                    time_offset=segment_duration_us,
+                    values=[0.0]
+                )
+            ]
+        ))
+        
+        return keyframes
 
     def select_random_images(self, all_images: List[str], total_duration_ms: int, image_duration_ms: int) -> List[str]:
         """
@@ -116,6 +238,8 @@ class DraftGeneratorService:
             output_dir: str,
             enable_transitions: bool = True,
             enable_effects: bool = True,
+            enable_keyframes: bool = True,  # 默认启用关键帧
+            image_scale: float = 1.8,  # 图片缩放比例
             random_seed: Optional[int] = None
     ) -> str:
         """
@@ -129,6 +253,8 @@ class DraftGeneratorService:
             output_dir: 输出目录路径
             enable_transitions: 是否启用转场
             enable_effects: 是否启用特效
+            enable_keyframes: 是否启用关键帧动画（默认启用）
+            image_scale: 图片缩放比例（默认1.8）
             random_seed: 随机种子（用于复现结果）
 
         Returns:
@@ -187,6 +313,19 @@ class DraftGeneratorService:
         shutil.copy(audio_path, audio_dest)
         audio_relative_path = f"##_draftpath_placeholder_0E685133-18CE-45ED-8CB8-2904A212EC80_##/materials/{audio_filename}"
         print(f"复制音频: {os.path.basename(audio_path)}")
+        
+        # 检查并复制字幕文件
+        subtitle_service = get_subtitle_service()
+        audio_dir = os.path.dirname(audio_path)
+        audio_name = Path(audio_path).stem
+        srt_path = os.path.join(audio_dir, f"{audio_name}.srt")
+        srt_dest = None
+        
+        if subtitle_service.validate_subtitle_file(audio_path):
+            srt_filename = f"subtitle_{os.path.basename(srt_path)}"
+            srt_dest = os.path.join(materials_dir, srt_filename)
+            shutil.copy(srt_path, srt_dest)
+            print(f"复制字幕: {os.path.basename(srt_path)}")
 
         # 复制图片
         image_relative_paths = []
@@ -210,7 +349,10 @@ class DraftGeneratorService:
             audio_duration_us,
             image_duration_us,
             enable_transitions,
-            enable_effects
+            enable_effects,
+            enable_keyframes,
+            image_scale,
+            srt_dest  # 传递字幕文件路径
         )
 
         # 9. 复制元信息文件
@@ -224,10 +366,20 @@ class DraftGeneratorService:
         # 11. 创建 ZIP 包
         print("\n创建 ZIP 包...")
         zip_path = self._create_zip_package(draft_dir)
+        
+        # 12. 移动到本地剪映目录（如果配置了）
+        logger.info("检查本地目录配置...")
+        local_path = self._move_to_local_dir(draft_dir, video_title)
+        
+        # 如果成功移动，更新返回路径
+        final_path = local_path if local_path else draft_dir
 
         print(f"\n{'=' * 60}")
         print(f"✅ 生成完成!")
-        print(f"草稿目录: {draft_dir}")
+        if local_path:
+            print(f"草稿已移动到: {local_path}")
+        else:
+            print(f"草稿目录: {draft_dir}")
         print(f"ZIP 包: {zip_path}")
         print(f"总时长: {audio_duration_ms / 1000:.2f} 秒")
         print(f"图片数量: {len(selected_images)}")
@@ -235,11 +387,16 @@ class DraftGeneratorService:
             print(f"包含转场: {len(selected_images) - 1} 个")
         if enable_effects:
             print(f"包含特效: 已添加随机特效")
+        if enable_keyframes:
+            print(f"包含关键帧: 已添加动画效果（缩放: {image_scale}x）")
         print(f"画布比例: 16:9 (1920x1080)")
-        print(f"\n📌 可以将草稿 ZIP 包导入剪映使用")
+        if local_path:
+            print(f"\n📌 可以直接在剪映中打开该目录")
+        else:
+            print(f"\n📌 可以将草稿 ZIP 包导入剪映使用")
         print(f"{'=' * 60}\n")
 
-        return draft_dir
+        return final_path
 
     def _create_draft_object(
             self,
@@ -248,7 +405,10 @@ class DraftGeneratorService:
             audio_duration_us: int,
             image_duration_us: int,
             enable_transitions: bool,
-            enable_effects: bool
+            enable_effects: bool,
+            enable_keyframes: bool = True,  # 默认启用
+            image_scale: float = 1.8,  # 图片缩放比例
+            srt_path: Optional[str] = None  # 字幕文件路径
     ) -> Draft:
         """创建草稿对象（内部方法）"""
 
@@ -384,11 +544,15 @@ class DraftGeneratorService:
                 clip=Clip(
                     alpha=1.0,
                     rotation=0.0,
-                    scale={"x": 1.0, "y": 1.0},
-                    transform={"x": 0.0, "y": 0.0}
+                    scale={"x": image_scale if enable_keyframes else 1.0, "y": image_scale if enable_keyframes else 1.0},
+                    transform={"x": 0.0, "y": 0.8 if enable_keyframes and i % 2 == 0 else -0.8 if enable_keyframes and i % 2 == 1 else 0.0}
                 ),
                 extra_refs=extra_refs
             )
+            
+            # 如果启用关键帧，添加动画
+            if enable_keyframes:
+                video_segment.common_keyframes = self.create_keyframes_for_segment(segment_duration, i, image_scale)
             video_track.segments.append(video_segment)
             current_time += segment_duration
 
@@ -438,7 +602,78 @@ class DraftGeneratorService:
             effect_track.segments.append(effect_segment)
             tracks.append(effect_track)
 
-        # 9. 创建草稿
+        # 9. 处理字幕（如果提供了SRT文件）
+        if srt_path and os.path.exists(srt_path):
+            print("添加字幕轨道...")
+            subtitle_service = get_subtitle_service()
+            
+            # 创建字幕材料
+            subtitle_materials = subtitle_service.create_subtitle_materials(srt_path)
+            
+            # 添加字幕材料到materials
+            materials.texts = subtitle_materials['text_materials']
+            materials.material_animations.extend(subtitle_materials['animation_materials'])
+            
+            # 创建字幕轨道（转换为Track对象）
+            subtitle_track_dict = subtitle_service.create_subtitle_track(subtitle_materials['text_segments'])
+            
+            # 转换segments为Segment对象
+            subtitle_segments = []
+            for seg_dict in subtitle_track_dict['segments']:
+                # 处理source_timerange，如果为None则使用默认值
+                source_timerange = seg_dict.get('source_timerange')
+                if source_timerange is None:
+                    source = Timerange(start=0, duration=0)
+                else:
+                    source = Timerange(
+                        start=source_timerange.get('start', 0),
+                        duration=source_timerange.get('duration', 0)
+                    )
+                
+                # 处理clip
+                clip_data = seg_dict.get('clip')
+                if clip_data and isinstance(clip_data, dict):
+                    clip = Clip(
+                        alpha=clip_data.get('alpha', 1.0),
+                        rotation=clip_data.get('rotation', 0.0),
+                        scale=clip_data.get('scale', {"x": 1.0, "y": 1.0}),
+                        transform=clip_data.get('transform', {"x": 0.0, "y": 0.0}),
+                        flip=clip_data.get('flip', {"horizontal": False, "vertical": False})
+                    )
+                else:
+                    clip = None
+                
+                segment = Segment(
+                    id=seg_dict['id'],
+                    material_id=seg_dict['material_id'],
+                    target=Timerange(
+                        start=seg_dict['target_timerange']['start'],
+                        duration=seg_dict['target_timerange']['duration']
+                    ),
+                    source=source,
+                    speed=seg_dict.get('speed', 1.0),
+                    volume=seg_dict.get('volume', 1.0),
+                    clip=clip
+                )
+                # 添加其他必要的字段
+                segment.render_index = seg_dict.get('render_index', 14000)
+                segment.track_render_index = seg_dict.get('track_render_index', 2)
+                segment.track_attribute = seg_dict.get('track_attribute', 0)
+                segment.visible = seg_dict.get('visible', True)
+                segment.extra_material_refs = seg_dict.get('extra_material_refs', [])
+                subtitle_segments.append(segment)
+            
+            subtitle_track = Track(
+                id=subtitle_track_dict['id'],
+                type=subtitle_track_dict['type'],
+                segments=subtitle_segments,
+                attribute=subtitle_track_dict.get('attribute', 0)
+            )
+            tracks.append(subtitle_track)
+            
+            print(f"  添加了 {subtitle_materials['subtitle_count']} 条字幕")
+        
+        # 10. 创建草稿
         draft = Draft(
             id=draft_id,
             duration=audio_duration_us,
@@ -490,6 +725,48 @@ class DraftGeneratorService:
                 f.write(settings_content)
             print("创建基础设置文件: draft_settings")
 
+    def _move_to_local_dir(self, draft_dir: str, video_title: str) -> Optional[str]:
+        """
+        移动草稿到本地剪映目录
+        
+        Args:
+            draft_dir: 生成的草稿目录路径
+            video_title: 视频标题（用作目标文件夹名）
+        
+        Returns:
+            移动后的目标路径，如果跳过则返回 None
+        """
+        # 读取环境变量
+        local_dir = os.environ.get('DRAFT_LOCAL_DIR', '').strip()
+        
+        # 如果是 test 或未设置，跳过移动
+        if not local_dir or local_dir.lower() == 'test':
+            logger.debug(f"DRAFT_LOCAL_DIR 未设置或为 test，跳过移动")
+            return None
+        
+        # 验证目标目录
+        if not os.path.exists(local_dir):
+            logger.warning(f"本地目录不存在，跳过移动: {local_dir}")
+            return None
+        
+        # 构建目标路径
+        target_path = os.path.join(local_dir, video_title)
+        
+        try:
+            # 如果目标已存在，先删除
+            if os.path.exists(target_path):
+                logger.info(f"删除已存在的目录: {target_path}")
+                shutil.rmtree(target_path)
+            
+            # 移动整个文件夹
+            shutil.move(draft_dir, target_path)
+            logger.info(f"成功移动到本地剪映目录: {target_path}")
+            
+            return target_path
+        except Exception as e:
+            logger.error(f"移动到本地目录失败: {str(e)}")
+            return None
+    
     def _create_zip_package(self, draft_dir: str) -> str:
         """创建 ZIP 包（内部方法）"""
         zip_path = f"{draft_dir}.zip"
@@ -614,6 +891,8 @@ def generate_draft_from_story(cid: str, vid: str,
                              image_duration_seconds: float = 3.0,
                              enable_transitions: bool = True,
                              enable_effects: bool = True,
+                             enable_keyframes: bool = True,  # 默认启用
+                             image_scale: float = 1.8,  # 图片缩放比例
                              random_seed: Optional[int] = 42):
     """
     根据故事ID生成剪映草稿
@@ -624,6 +903,8 @@ def generate_draft_from_story(cid: str, vid: str,
         image_duration_seconds: 每张图片显示时长（秒）
         enable_transitions: 是否启用转场
         enable_effects: 是否启用特效
+        enable_keyframes: 是否启用关键帧动画（默认启用）
+        image_scale: 图片缩放比例（默认1.8）
         random_seed: 随机种子
     
     Returns:
@@ -656,6 +937,8 @@ def generate_draft_from_story(cid: str, vid: str,
             output_dir=output_dir,
             enable_transitions=enable_transitions,
             enable_effects=enable_effects,
+            enable_keyframes=enable_keyframes,
+            image_scale=image_scale,
             random_seed=random_seed
         )
         
@@ -679,6 +962,10 @@ def main():
                        help='禁用转场效果')
     parser.add_argument('--no-effects', action='store_true',
                        help='禁用视频特效')
+    parser.add_argument('--no-keyframes', action='store_true',
+                       help='禁用关键帧动画（默认启用）')
+    parser.add_argument('--scale', type=float, default=1.8,
+                       help='图片缩放比例，默认1.8')
     parser.add_argument('--seed', type=int, default=42,
                        help='随机种子，用于复现结果')
     
@@ -693,6 +980,8 @@ def main():
     print(f"图片显示时长: {args.duration} 秒")
     print(f"转场效果: {'启用' if not args.no_transitions else '禁用'}")
     print(f"视频特效: {'启用' if not args.no_effects else '禁用'}")
+    print(f"关键帧动画: {'启用' if not args.no_keyframes else '禁用'}")
+    print(f"图片缩放比例: {args.scale}x")
     print(f"{'=' * 60}\n")
     
     try:
@@ -703,6 +992,8 @@ def main():
             image_duration_seconds=args.duration,
             enable_transitions=not args.no_transitions,
             enable_effects=not args.no_effects,
+            enable_keyframes=not args.no_keyframes,  # 注意：使用 not args.no_keyframes
+            image_scale=args.scale,
             random_seed=args.seed
         )
         

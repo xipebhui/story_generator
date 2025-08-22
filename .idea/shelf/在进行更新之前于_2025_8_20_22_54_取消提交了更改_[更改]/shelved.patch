@@ -1,0 +1,613 @@
+Index: voice_gen/tts_client.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import requests\nimport json\nimport os\nimport time\nimport re\nimport string\nimport logging\nimport traceback\nfrom pathlib import Path\nfrom pydub import AudioSegment\nimport argparse\n\n# 配置日志\nlogging.basicConfig(\n    level=logging.INFO,\n    format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',\n    datefmt='%Y-%m-%d %H:%M:%S'\n)\nlogger = logging.getLogger(__name__)\n\nclass TTSClient:\n    def __init__(self, base_url=\"https://easyvoice.ioplus.tech\"):\n        self.base_url = base_url\n        self.api_url = f\"{base_url}/api/v1/tts\"\n    \n    def generate_speech(self, text, voice=\"zh-CN-XiaoxiaoNeural\", \n                       pitch=\"0Hz\", volume=\"0%\", rate=\"0%\", \n                       use_llm=False, save_path=\"./downloads\"):\n        \"\"\"\n        生成语音并下载MP3文件（根据文本长度自动选择同步或异步接口）\n        \n        Args:\n            text: 要转换的文本内容\n            voice: 语音类型\n            pitch: 音调调整\n            volume: 音量调整  \n            rate: 语速调整\n            use_llm: 是否使用LLM处理文本\n            save_path: 保存文件的目录\n        \n        Returns:\n            dict: 包含文件路径等信息的结果\n        \"\"\"\n        \n        # 检查文本长度，超过200字符使用异步接口\n        if len(text) > 200:\n            logger.info(f\"文本长度 {len(text)} 字符，使用异步接口...\")\n            return self._generate_speech_async(text, voice, pitch, volume, rate, use_llm, save_path)\n        \n        # 1. 发送生成请求（同步接口）\n        generate_url = f\"{self.api_url}/generate\"\n        payload = {\n            \"text\": text,\n            \"voice\": voice,\n            \"pitch\": pitch,\n            \"volume\": volume,\n            \"rate\": rate\n        }\n        \n        # 只在需要时添加 useLLM 参数\n        if use_llm:\n            payload[\"useLLM\"] = use_llm\n        \n        print(f\"正在生成语音: {text[:50]}...\")\n        \n        try:\n            # 添加必要的请求头\n            headers = {\n                'accept': 'application/json, text/plain, */*',\n                'content-type': 'application/json',\n                'origin': self.base_url,\n                'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'\n            }\n            \n            # 发送POST请求生成音频\n            response = requests.post(generate_url, json=payload, headers=headers, timeout=60)\n            \n            # 如果请求失败，打印详细错误信息\n            if response.status_code != 200:\n                print(f\"错误状态码: {response.status_code}\")\n                print(f\"错误响应: {response.text}\")\n            \n            response.raise_for_status()\n            \n            result = response.json()\n            \n            if not result.get('success'):\n                raise Exception(f\"生成失败: {result.get('message', '未知错误')}\")\n            \n            # 获取文件信息\n            data = result['data']\n            audio_file = data['file']  # MP3文件名\n            srt_file = data.get('srt')  # 字幕文件名（如果有）\n            \n            print(f\"生成成功，音频文件: {audio_file}\")\n            \n            # 2. 下载音频文件\n            audio_path = self.download_file(audio_file, save_path)\n            \n            # 3. 下载字幕文件（如果存在）\n            srt_path = None\n            if srt_file:\n                try:\n                    srt_path = self.download_file(srt_file, save_path)\n                except Exception as e:\n                    print(f\"下载字幕文件失败: {e}\")\n            \n            return {\n                'success': True,\n                'audio_path': audio_path,\n                'srt_path': srt_path,\n                'text': text,\n                'voice': voice\n            }\n            \n        except requests.exceptions.RequestException as e:\n            raise Exception(f\"请求失败: {e}\")\n        except Exception as e:\n            raise Exception(f\"生成语音失败: {e}\")\n    \n    def download_file(self, filename, save_path=\"./downloads\"):\n        \"\"\"\n        下载文件\n        \n        Args:\n            filename: 要下载的文件名\n            save_path: 保存目录\n        \n        Returns:\n            str: 保存的文件完整路径\n        \"\"\"\n        download_url = f\"{self.api_url}/download/{filename}\"\n        \n        # 创建保存目录\n        Path(save_path).mkdir(parents=True, exist_ok=True)\n        \n        # 下载文件\n        response = requests.get(download_url, stream=True)\n        response.raise_for_status()\n        \n        # 保存到本地\n        file_path = os.path.join(save_path, filename)\n        with open(file_path, 'wb') as f:\n            for chunk in response.iter_content(chunk_size=8192):\n                if chunk:\n                    f.write(chunk)\n        \n        print(f\"文件已保存到: {file_path}\")\n        return file_path\n\n    def get_voice_list(self):\n        \"\"\"获取可用语音列表\"\"\"\n        try:\n            response = requests.get(f\"{self.api_url}/voiceList\")\n            response.raise_for_status()\n            return response.json()\n        except Exception as e:\n            print(f\"获取语音列表失败: {e}\")\n            return None\n\n    def get_engines(self):\n        \"\"\"获取可用的TTS引擎\"\"\"\n        try:\n            response = requests.get(f\"{self.api_url}/engines\")\n            response.raise_for_status()\n            return response.json()\n        except Exception as e:\n            print(f\"获取引擎列表失败: {e}\")\n            return None\n    \n    def _generate_speech_async(self, text, voice, pitch, volume, rate, use_llm, save_path, max_wait=300):\n        \"\"\"\n        异步生成语音（用于长文本）\n        \n        Args:\n            text: 要转换的文本内容\n            voice: 语音类型\n            pitch: 音调调整\n            volume: 音量调整\n            rate: 语速调整\n            use_llm: 是否使用LLM处理文本\n            save_path: 保存文件的目录\n            max_wait: 最大等待时间（秒）\n        \n        Returns:\n            dict: 包含文件路径等信息的结果\n        \"\"\"\n        \n        # 处理服务端路径问题：确保文本开头不包含特殊字符\n        text = self._prepare_text_for_async_api(text)\n        \n        # 1. 创建任务\n        create_url = f\"{self.api_url}/create\"\n        payload = {\n            \"text\": text,\n            \"voice\": voice,\n            \"pitch\": pitch,\n            \"volume\": volume,\n            \"rate\": rate\n        }\n        \n        if use_llm:\n            payload[\"useLLM\"] = use_llm\n        \n        print(f\"正在创建异步任务...\")\n        \n        headers = {\n            'accept': 'application/json, text/plain, */*',\n            'content-type': 'application/json',\n            'origin': self.base_url,\n            'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'\n        }\n        \n        response = requests.post(create_url, json=payload, headers=headers)\n        response.raise_for_status()\n        \n        result = response.json()\n        if not result.get('success'):\n            raise Exception(f\"创建任务失败: {result.get('message')}\")\n        \n        task_id = result['data']['id']\n        print(f\"任务已创建，ID: {task_id}\")\n        \n        # 2. 轮询任务状态\n        start_time = time.time()\n        \n        while time.time() - start_time < max_wait:\n            # 检查任务状态\n            try:\n                status_response = requests.get(f\"{self.api_url}/task/{task_id}\", headers=headers)\n                status_response.raise_for_status()\n                \n                # 获取完整响应数据\n                full_response = status_response.json()\n                \n                # 检查响应是否成功\n                if not full_response.get('success', False):\n                    print(f\"API响应失败:\")\n                    print(f\"  完整响应: {json.dumps(full_response, ensure_ascii=False, indent=2)}\")\n                    raise Exception(f\"API响应失败: {full_response.get('message', '未知错误')}\")\n                \n                task_data = full_response.get('data', {})\n                status = task_data.get('status', 'unknown')\n                \n                print(f\"任务状态: {status}\")\n                \n                if status == 'completed':\n                    # 任务完成，下载文件\n                    result = task_data['result']\n                    audio_file = result['file']\n                    srt_file = result.get('srt')\n                    \n                    audio_path = self.download_file(audio_file, save_path)\n                    \n                    # 下载字幕文件（如果存在）\n                    srt_path = None\n                    if srt_file:\n                        try:\n                            srt_path = self.download_file(srt_file, save_path)\n                        except Exception as e:\n                            print(f\"下载字幕文件失败: {e}\")\n                    \n                    return {\n                        'success': True,\n                        'audio_path': audio_path,\n                        'srt_path': srt_path,\n                        'text': text,\n                        'voice': voice\n                    }\n                \n                elif status == 'failed':\n                    error_info = task_data.get('error', {})\n                    error_message = error_info.get('message', '未知错误')\n                    # 打印完整的错误信息用于调试\n                    print(f\"任务失败详情:\")\n                    print(f\"  错误信息: {error_message}\")\n                    print(f\"  完整错误数据: {json.dumps(error_info, ensure_ascii=False, indent=2)}\")\n                    print(f\"  完整任务数据: {json.dumps(task_data, ensure_ascii=False, indent=2)}\")\n                    raise Exception(f\"任务失败: {error_message}\")\n                \n                # 等待2秒后再次检查\n                time.sleep(2)\n                \n            except requests.exceptions.RequestException as e:\n                print(f\"检查任务状态失败: {e}\")\n                time.sleep(5)  # 网络错误时等待更长时间\n        \n        raise Exception(f\"任务超时，等待时间超过 {max_wait} 秒\")\n    \n    def _parse_srt_time(self, time_str):\n        \"\"\"\n        解析SRT时间格式 (00:00:00,000) 为毫秒\n        \"\"\"\n        time_parts = re.match(r'(\\d{2}):(\\d{2}):(\\d{2}),(\\d{3})', time_str)\n        if time_parts:\n            hours = int(time_parts.group(1))\n            minutes = int(time_parts.group(2))\n            seconds = int(time_parts.group(3))\n            milliseconds = int(time_parts.group(4))\n            total_ms = (hours * 3600 + minutes * 60 + seconds) * 1000 + milliseconds\n            return total_ms\n        return 0\n    \n    def _format_srt_time(self, milliseconds):\n        \"\"\"\n        将毫秒转换为SRT时间格式 (00:00:00,000)\n        \"\"\"\n        hours = milliseconds // 3600000\n        minutes = (milliseconds % 3600000) // 60000\n        seconds = (milliseconds % 60000) // 1000\n        ms = milliseconds % 1000\n        return f\"{hours:02d}:{minutes:02d}:{seconds:02d},{ms:03d}\"\n    \n    def generate_speech_with_line_num(self, text, voice, pitch, volume, rate, save_path, line_num, use_llm=False):\n        \"\"\"\n        生成语音并使用行号命名文件\n        \n        Args:\n            text: 要转换的文本内容\n            voice: 语音类型\n            pitch: 音调调整\n            volume: 音量调整  \n            rate: 语速调整\n            save_path: 保存文件的目录\n            line_num: 行号\n            use_llm: 是否使用LLM处理文本\n        \n        Returns:\n            dict: 包含文件路径等信息的结果\n        \"\"\"\n        \n        # 如果是英文语音，清理文本\n        if 'en-' in voice.lower():\n            original_text = text\n            text = self._clean_text_for_english_tts(text)\n            if original_text != text:\n                logger.debug(f\"文本已清理 - 行号: {line_num}\")\n                logger.debug(f\"原始文本: {original_text[:100]}...\")\n                logger.debug(f\"清理后文本: {text[:100]}...\")\n        \n        # 检查文本长度，超过200字符使用异步接口\n        if len(text) > 200:\n            logger.info(f\"文本长度 {len(text)} 字符，使用异步接口...\")\n            return self._generate_speech_async_with_line_num(text, voice, pitch, volume, rate, use_llm, save_path, line_num)\n        \n        # 1. 发送生成请求（同步接口）\n        generate_url = f\"{self.api_url}/generate\"\n        payload = {\n            \"text\": text,\n            \"voice\": voice,\n            \"pitch\": pitch,\n            \"volume\": volume,\n            \"rate\": rate\n        }\n        \n        # 只在需要时添加 useLLM 参数\n        if use_llm:\n            payload[\"useLLM\"] = use_llm\n        \n        print(f\"正在生成语音: {text[:50]}...\")\n        \n        try:\n            # 添加必要的请求头\n            headers = {\n                'accept': 'application/json, text/plain, */*',\n                'content-type': 'application/json',\n                'origin': self.base_url,\n                'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'\n            }\n            \n            # 发送POST请求生成音频\n            response = requests.post(generate_url, json=payload, headers=headers, timeout=60)\n            \n            # 如果请求失败，打印详细错误信息\n            if response.status_code != 200:\n                print(f\"错误状态码: {response.status_code}\")\n                print(f\"错误响应: {response.text}\")\n            \n            response.raise_for_status()\n            \n            result = response.json()\n            \n            if not result.get('success'):\n                raise Exception(f\"生成失败: {result.get('message', '未知错误')}\")\n            \n            # 获取文件信息\n            data = result['data']\n            audio_file = data['file']  # MP3文件名\n            srt_file = data.get('srt')  # 字幕文件名（如果有）\n            \n            print(f\"生成成功，音频文件: {audio_file}\")\n            \n            # 2. 下载音频文件并重命名\n            audio_filename = f\"line_{line_num:04d}.mp3\"\n            audio_path = self.download_file_with_rename(audio_file, save_path, audio_filename)\n            \n            # 3. 下载字幕文件（如果存在）并重命名\n            srt_path = None\n            if srt_file:\n                try:\n                    srt_filename = f\"line_{line_num:04d}.srt\"\n                    srt_path = self.download_file_with_rename(srt_file, save_path, srt_filename)\n                except Exception as e:\n                    print(f\"下载字幕文件失败: {e}\")\n            \n            return {\n                'success': True,\n                'audio_path': audio_path,\n                'srt_path': srt_path,\n                'text': text,\n                'voice': voice\n            }\n            \n        except requests.exceptions.RequestException as e:\n            raise Exception(f\"请求失败: {e}\")\n        except Exception as e:\n            raise Exception(f\"生成语音失败: {e}\")\n    \n    def _generate_speech_async_with_line_num(self, text, voice, pitch, volume, rate, use_llm, save_path, line_num, max_wait=300):\n        \"\"\"\n        异步生成语音并使用行号命名（用于长文本）\n        \"\"\"\n        \n        # 处理服务端路径问题：确保文本开头不包含特殊字符\n        text = self._prepare_text_for_async_api(text)\n        \n        # 1. 创建任务\n        create_url = f\"{self.api_url}/create\"\n        payload = {\n            \"text\": text,\n            \"voice\": voice,\n            \"pitch\": pitch,\n            \"volume\": volume,\n            \"rate\": rate\n        }\n        \n        if use_llm:\n            payload[\"useLLM\"] = use_llm\n        \n        logger.info(f\"正在创建异步任务，行号: {line_num}\")\n        logger.debug(f\"请求数据: {json.dumps(payload, ensure_ascii=False)}\")\n        \n        headers = {\n            'accept': 'application/json, text/plain, */*',\n            'content-type': 'application/json',\n            'origin': self.base_url,\n            'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'\n        }\n        \n        try:\n            response = requests.post(create_url, json=payload, headers=headers)\n            response.raise_for_status()\n            \n            result = response.json()\n            if not result.get('success'):\n                logger.error(f\"创建任务失败: {result}\")\n                raise Exception(f\"创建任务失败: {result.get('message')}\")\n            \n            task_id = result['data']['id']\n            logger.info(f\"任务已创建，ID: {task_id}\")\n            \n        except Exception as e:\n            logger.error(f\"创建任务异常: {str(e)}\")\n            logger.error(f\"异常堆栈:\\n{traceback.format_exc()}\")\n            raise\n        \n        # 2. 轮询任务状态\n        start_time = time.time()\n        \n        while time.time() - start_time < max_wait:\n            # 检查任务状态\n            try:\n                status_response = requests.get(f\"{self.api_url}/task/{task_id}\", headers=headers)\n                status_response.raise_for_status()\n                \n                # 获取完整响应数据\n                full_response = status_response.json()\n                \n                # 检查响应是否成功\n                if not full_response.get('success', False):\n                    logger.error(f\"API响应失败:\")\n                    logger.error(f\"完整响应: {json.dumps(full_response, ensure_ascii=False, indent=2)}\")\n                    raise Exception(f\"API响应失败: {full_response.get('message', '未知错误')}\")\n                \n                task_data = full_response.get('data', {})\n                status = task_data.get('status', 'unknown')\n                \n                logger.debug(f\"任务状态: {status}\")\n                \n                if status == 'completed':\n                    # 任务完成，下载文件\n                    result = task_data['result']\n                    audio_file = result['file']\n                    srt_file = result.get('srt')\n                    \n                    # 使用行号命名\n                    audio_filename = f\"line_{line_num:04d}.mp3\"\n                    audio_path = self.download_file_with_rename(audio_file, save_path, audio_filename)\n                    \n                    # 下载字幕文件（如果存在）\n                    srt_path = None\n                    if srt_file:\n                        try:\n                            srt_filename = f\"line_{line_num:04d}.srt\"\n                            srt_path = self.download_file_with_rename(srt_file, save_path, srt_filename)\n                        except Exception as e:\n                            logger.warning(f\"下载字幕文件失败: {e}\")\n                    \n                    return {\n                        'success': True,\n                        'audio_path': audio_path,\n                        'srt_path': srt_path,\n                        'text': text,\n                        'voice': voice\n                    }\n                \n                elif status == 'failed':\n                    # 尝试从不同位置获取错误信息\n                    error_message = task_data.get('message', '')  # 首先尝试从task_data获取\n                    if not error_message:\n                        error_info = task_data.get('error', {})\n                        error_message = error_info.get('message', '未知错误')\n                    \n                    # 记录详细错误信息\n                    logger.error(f\"任务失败 - 文本行号: {line_num}\")\n                    logger.error(f\"文本内容: {text[:100]}...\")\n                    logger.error(f\"错误信息: {error_message}\")\n                    logger.error(f\"完整任务数据: {json.dumps(task_data, ensure_ascii=False, indent=2)}\")\n                    \n                    raise Exception(f\"任务失败 (文本行号: {line_num}): {error_message}\")\n                \n                # 等待2秒后再次检查\n                time.sleep(2)\n                \n            except requests.exceptions.RequestException as e:\n                logger.warning(f\"检查任务状态失败: {e}\")\n                logger.debug(f\"异常堆栈:\\n{traceback.format_exc()}\")\n                time.sleep(5)  # 网络错误时等待更长时间\n            except Exception as e:\n                logger.error(f\"处理任务状态时异常: {str(e)}\")\n                logger.error(f\"异常堆栈:\\n{traceback.format_exc()}\")\n                raise\n        \n        raise Exception(f\"任务超时，等待时间超过 {max_wait} 秒\")\n    \n    def download_file_with_rename(self, filename, save_path, new_filename):\n        \"\"\"\n        下载文件并重命名\n        \n        Args:\n            filename: 要下载的文件名\n            save_path: 保存目录\n            new_filename: 新文件名\n        \n        Returns:\n            str: 保存的文件完整路径\n        \"\"\"\n        download_url = f\"{self.api_url}/download/{filename}\"\n        \n        # 创建保存目录\n        Path(save_path).mkdir(parents=True, exist_ok=True)\n        \n        # 下载文件\n        response = requests.get(download_url, stream=True)\n        response.raise_for_status()\n        \n        # 保存到本地（使用新文件名）\n        file_path = os.path.join(save_path, new_filename)\n        with open(file_path, 'wb') as f:\n            for chunk in response.iter_content(chunk_size=8192):\n                if chunk:\n                    f.write(chunk)\n        \n        print(f\"文件已保存到: {file_path}\")\n        return file_path\n    \n    def _prepare_text_for_async_api(self, text):\n        \"\"\"\n        为异步API准备文本，避免服务端文件路径问题\n        \n        服务端bug：使用文本开头作为文件夹名，如果包含特殊字符会导致ffmpeg失败\n        解决方案：直接清理前10个单词中的所有特殊字符\n        \"\"\"\n        import re\n        \n        # 分割出前10个单词\n        words = text.split()\n        if not words:\n            return text\n        \n        # 取前10个单词（或更少，如果文本较短）\n        first_words = words[:10] if len(words) >= 10 else words\n        remaining_text = words[10:] if len(words) > 10 else []\n        \n        # 定义要替换的特殊字符及其替换值\n        replacements = {\n            \"'\": \"\",  # 撇号直接删除（如 Sera's -> Seras）\n            \"'\": \"\",  # 智能单引号\n            '\"': \"\",  # 双引号删除\n            '\"': \"\",  # 左智能双引号\n            '\"': \"\",  # 右智能双引号\n            '/': \" \",  # 斜杠替换为空格\n            '\\\\': \" \",  # 反斜杠替换为空格\n            ':': \"\",  # 冒号删除\n            '*': \"\",  # 星号删除\n            '?': \"\",  # 问号删除\n            '<': \"\",  # 小于号删除\n            '>': \"\",  # 大于号删除\n            '|': \"\",  # 管道符删除\n            '&': \" and \",  # &符号替换为and\n            ';': \"\",  # 分号删除\n            '(': \"\",  # 左括号删除\n            ')': \"\",  # 右括号删除\n            '[': \"\",  # 左方括号删除\n            ']': \"\",  # 右方括号删除\n            '{': \"\",  # 左花括号删除\n            '}': \"\",  # 右花括号删除\n            ',': \"\",  # 逗号删除\n            '.': \"\",  # 句号删除\n            '!': \"\",  # 感叹号删除\n            '—': \"\",  # em dash删除\n            '–': \"\",  # en dash删除\n            '…': \"\",  # 省略号删除\n        }\n        \n        # 清理前10个单词\n        cleaned_first_words = []\n        modified = False\n        \n        for word in first_words:\n            original_word = word\n            cleaned_word = word\n            \n            # 应用所有替换\n            for char, replacement in replacements.items():\n                if char in cleaned_word:\n                    cleaned_word = cleaned_word.replace(char, replacement)\n                    modified = True\n            \n            # 清理多余的空格\n            cleaned_word = ' '.join(cleaned_word.split())\n            \n            # 如果清理后单词为空，跳过\n            if cleaned_word.strip():\n                cleaned_first_words.append(cleaned_word)\n            elif original_word:  # 如果原单词不为空但清理后为空\n                modified = True\n        \n        if modified:\n            logger.info(f\"清理了前10个单词中的特殊字符\")\n            logger.debug(f\"原始: {' '.join(first_words[:5])}...\")\n            logger.debug(f\"清理后: {' '.join(cleaned_first_words[:5])}...\")\n        \n        # 重新组合文本\n        if remaining_text:\n            # 前10个单词被清理，其余保持原样\n            result = ' '.join(cleaned_first_words + remaining_text)\n        else:\n            # 整个文本少于10个单词\n            result = ' '.join(cleaned_first_words)\n        \n        return result\n    \n    def _clean_text_for_english_tts(self, text):\n        \"\"\"\n        清理文本，只保留英文字符和基本标点符号\n        使用 ftfy 库智能处理文本编码问题\n        \"\"\"\n        try:\n            import ftfy\n            # 使用 ftfy 自动修复文本编码问题\n            # 它会智能地将各种Unicode字符转换为最合适的ASCII等效字符\n            cleaned_text = ftfy.fix_text(text)\n            \n            # ftfy 已经处理了大部分问题，但为了确保万无一失\n            # 我们仍然过滤掉任何剩余的非ASCII字符\n            cleaned_text = ''.join(char for char in cleaned_text if ord(char) < 128)\n            \n        except ImportError:\n            # 如果 ftfy 未安装，使用备用方案\n            logger.warning(\"ftfy 库未安装，使用备用文本清理方案\")\n            import unicodedata\n            \n            # 备用方案：手动替换常见特殊字符\n            text = text.replace('\\u201c', '\"').replace('\\u201d', '\"')  # 智能双引号\n            text = text.replace('\\u2018', \"'\").replace('\\u2019', \"'\")  # 智能单引号\n            text = text.replace('\\u2014', '--').replace('\\u2013', '-')  # 破折号\n            text = text.replace('\\u2026', '...')  # 省略号\n            text = text.replace('\\u00a0', ' ')  # 不间断空格\n            \n            # NFKD 规范化\n            text = unicodedata.normalize('NFKD', text)\n            \n            # 只保留ASCII字符\n            cleaned_text = ''.join(char for char in text if ord(char) < 128)\n        \n        # 清理多余的空格\n        cleaned_text = ' '.join(cleaned_text.split())\n        \n        # 确保文本不为空\n        if not cleaned_text.strip():\n            cleaned_text = \"Text content\"\n            logger.warning(\"文本清理后为空，使用默认值\")\n        \n        return cleaned_text\n    \n    def _remove_punctuation(self, text):\n        \"\"\"\n        去除文本中的所有标点符号\n        \"\"\"\n        # 定义要去除的标点符号（包括中英文标点）\n        punctuation = string.punctuation + '，。！？；：\"\"''（）【】《》、…—·'\n        # 创建翻译表\n        translator = str.maketrans('', '', punctuation)\n        # 去除标点符号\n        return text.translate(translator)\n    \n    def _merge_srt_files(self, srt_files, audio_durations, output_path):\n        \"\"\"\n        合并多个SRT字幕文件\n        \n        Args:\n            srt_files: SRT文件路径列表\n            audio_durations: 对应音频文件的时长列表（毫秒）\n            output_path: 输出的合并SRT文件路径\n        \"\"\"\n        merged_content = []\n        subtitle_index = 1\n        time_offset = 0\n        \n        for i, srt_file in enumerate(srt_files):\n            if srt_file and os.path.exists(srt_file):\n                with open(srt_file, 'r', encoding='utf-8') as f:\n                    content = f.read().strip()\n                \n                # 解析SRT内容\n                subtitles = content.split('\\n\\n')\n                \n                for subtitle in subtitles:\n                    if not subtitle.strip():\n                        continue\n                    \n                    lines = subtitle.strip().split('\\n')\n                    if len(lines) >= 3:\n                        # 跳过原始序号，使用新的连续序号\n                        time_line = lines[1]\n                        text_lines = lines[2:]\n                        \n                        # 解析时间\n                        time_match = re.match(r'(\\d{2}:\\d{2}:\\d{2},\\d{3}) --> (\\d{2}:\\d{2}:\\d{2},\\d{3})', time_line)\n                        if time_match:\n                            start_time = self._parse_srt_time(time_match.group(1))\n                            end_time = self._parse_srt_time(time_match.group(2))\n                            \n                            # 添加时间偏移\n                            new_start = start_time + time_offset\n                            new_end = end_time + time_offset\n                            \n                            # 处理文本：去除标点符号\n                            cleaned_text_lines = []\n                            for text_line in text_lines:\n                                cleaned_text = self._remove_punctuation(text_line)\n                                if cleaned_text.strip():  # 只保留非空行\n                                    cleaned_text_lines.append(cleaned_text)\n                            \n                            # 只有当有文本内容时才添加字幕\n                            if cleaned_text_lines:\n                                # 格式化新的字幕块\n                                new_subtitle = f\"{subtitle_index}\\n\"\n                                new_subtitle += f\"{self._format_srt_time(new_start)} --> {self._format_srt_time(new_end)}\\n\"\n                                new_subtitle += '\\n'.join(cleaned_text_lines)\n                                \n                                merged_content.append(new_subtitle)\n                                subtitle_index += 1\n                \n                # 更新时间偏移（使用音频实际时长）\n                if i < len(audio_durations):\n                    time_offset += audio_durations[i]\n        \n        # 保存合并的SRT文件\n        if merged_content:\n            with open(output_path, 'w', encoding='utf-8') as f:\n                f.write('\\n\\n'.join(merged_content))\n            print(f\"字幕文件已合并: {output_path}\")\n            return output_path\n        \n        return None\n    \n    def generate_story_audio(self, c_id, v_id, gender):\n        \"\"\"\n        读取故事文件并生成完整音频\n        \n        Args:\n            c_id: creator_id\n            v_id: voice_id\n            gender: 性别 ('male' 或 'female')\n        \n        Returns:\n            dict: 包含音频和字幕文件路径\n        \"\"\"\n        # 构建故事文件路径\n        story_path = f\"./story_result/{c_id}/{v_id}/final/story.txt\"\n        \n        # 检查文件是否存在\n        if not os.path.exists(story_path):\n            raise Exception(f\"故事文件不存在: {story_path}\")\n        \n        # 选择语音\n        voice = \"en-US-BrianNeural\" if gender == \"male\" else \"en-US-AvaNeural\"\n        \n        # 创建临时目录（使用cid和vid作为子目录，避免多任务冲突）\n        tmp_dir = f\"./output/tmp/{c_id}_{v_id}\"\n        Path(tmp_dir).mkdir(parents=True, exist_ok=True)\n        \n        # 读取故事文件\n        with open(story_path, 'r', encoding='utf-8') as f:\n            lines = f.readlines()\n        \n        logger.info(f\"开始生成音频，共 {len(lines)} 行\")\n        \n        # 检查已存在的文件，支持断点续传\n        audio_files = []\n        srt_files = []\n        audio_durations = []\n        \n        for i, line in enumerate(lines):\n            line = line.strip()\n            if line:  # 跳过空行\n                # 使用行号作为文件名\n                line_num = i + 1\n                audio_filename = f\"line_{line_num:04d}.mp3\"\n                srt_filename = f\"line_{line_num:04d}.srt\"\n                audio_path = os.path.join(tmp_dir, audio_filename)\n                srt_path = os.path.join(tmp_dir, srt_filename)\n                \n                # 检查文件是否已存在（支持断点续传）\n                if os.path.exists(audio_path):\n                    logger.debug(f\"第 {line_num}/{len(lines)} 行已存在，跳过...\")\n                    audio_files.append(audio_path)\n                    if os.path.exists(srt_path):\n                        srt_files.append(srt_path)\n                    else:\n                        srt_files.append(None)\n                else:\n                    logger.info(f\"正在处理第 {line_num}/{len(lines)} 行...\")\n                    \n                    # 生成语音，但先保存到临时文件\n                    result = self.generate_speech_with_line_num(\n                        text=line,\n                        voice=voice,\n                        pitch=\"0Hz\",\n                        volume=\"0%\", \n                        rate=\"0%\",\n                        save_path=tmp_dir,\n                        line_num=line_num\n                    )\n                    \n                    if result['success']:\n                        audio_files.append(result['audio_path'])\n                        # 收集SRT文件路径\n                        if result.get('srt_path'):\n                            srt_files.append(result['srt_path'])\n                        else:\n                            srt_files.append(None)\n        \n        # 合并音频文件\n        if not audio_files:\n            raise Exception(\"没有生成任何音频文件\")\n        \n        print(\"开始合并音频文件...\")\n        combined = AudioSegment.empty()\n        \n        for audio_file in audio_files:\n            audio = AudioSegment.from_mp3(audio_file)\n            audio_durations.append(len(audio))  # 记录每个音频的时长（毫秒）\n            combined += audio\n        \n        # 保存合并后的音频\n        output_path = f\"./output/{c_id}_{v_id}_story.mp3\"\n        combined.export(output_path, format=\"mp3\")\n        \n        print(f\"音频合并完成: {output_path}\")\n        \n        # 合并字幕文件\n        srt_output_path = None\n        if any(srt_files):\n            srt_output_path = f\"./output/{c_id}_{v_id}_story.srt\"\n            self._merge_srt_files(srt_files, audio_durations, srt_output_path)\n        \n        # 清理临时文件\n        for file in Path(tmp_dir).glob(\"*.mp3\"):\n            file.unlink()\n        for file in Path(tmp_dir).glob(\"*.srt\"):\n            file.unlink()\n        \n        return {\n            'audio_path': output_path,\n            'srt_path': srt_output_path\n        }\n\n# 使用示例\nif __name__ == \"__main__\":\n    # 创建命令行参数解析器\n    parser = argparse.ArgumentParser(description='生成故事音频')\n    parser.add_argument('--cid', type=str, required=True, help='Creator ID')\n    parser.add_argument('--vid', type=str, required=True, help='Voice ID')\n    parser.add_argument('--gender', type=int, required=True, choices=[0, 1], \n                       help='性别: 0=女声, 1=男声')\n    \n    # 解析参数\n    args = parser.parse_args()\n    \n    # 转换性别参数\n    gender = \"male\" if args.gender == 1 else \"female\"\n    \n    # 创建客户端实例\n    client = TTSClient(\"http://localhost:3000\")\n    \n    try:\n        print(f\"开始生成故事音频...\")\n        print(f\"Creator ID: {args.cid}\")\n        print(f\"Voice ID: {args.vid}\")\n        print(f\"性别: {'男声' if args.gender == 1 else '女声'}\")\n        \n        # 调用生成方法\n        result = client.generate_story_audio(\n            c_id=args.cid,\n            v_id=args.vid,\n            gender=gender\n        )\n        \n        print(f\"\\n✅ 音频生成成功！\")\n        print(f\"音频文件: {result['audio_path']}\")\n        if result.get('srt_path'):\n            print(f\"字幕文件: {result['srt_path']}\")\n        \n    except Exception as e:\n        print(f\"\\n❌ 生成失败: {e}\")
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/voice_gen/tts_client.py b/voice_gen/tts_client.py
+--- a/voice_gen/tts_client.py	(revision c2ba01a8b402431c4e3f32d6d1684a5c64e7b225)
++++ b/voice_gen/tts_client.py	(date 1755623365779)
+@@ -19,61 +19,67 @@
+ logger = logging.getLogger(__name__)
+ 
+ class TTSClient:
+-    def __init__(self, base_url="https://easyvoice.ioplus.tech"):
++    def __init__(self, base_url="http://localhost:18765"):
+         self.base_url = base_url
+-        self.api_url = f"{base_url}/api/v1/tts"
++        self.api_url = f"{base_url}/api/v1"
+     
+     def generate_speech(self, text, voice="zh-CN-XiaoxiaoNeural", 
+-                       pitch="0Hz", volume="0%", rate="0%", 
++                       pitch="+0Hz", volume="+0%", rate="+0%", 
+                        use_llm=False, save_path="./downloads"):
+         """
+-        生成语音并下载MP3文件（根据文本长度自动选择同步或异步接口）
++        生成语音并保存MP3文件（使用新的TTS公开API）
+         
+         Args:
+             text: 要转换的文本内容
+             voice: 语音类型
+-            pitch: 音调调整
+-            volume: 音量调整  
+-            rate: 语速调整
+-            use_llm: 是否使用LLM处理文本
++            pitch: 音调调整 (-100Hz 到 +100Hz)
++            volume: 音量调整 (-100% 到 +100%)
++            rate: 语速调整 (-100% 到 +100%)
++            use_llm: 是否使用LLM处理文本（暂不支持）
+             save_path: 保存文件的目录
+         
+         Returns:
+             dict: 包含文件路径等信息的结果
+         """
++        import base64
++        from pathlib import Path
++        import hashlib
+         
+-        # 检查文本长度，超过200字符使用异步接口
+-        if len(text) > 200:
+-            logger.info(f"文本长度 {len(text)} 字符，使用异步接口...")
+-            return self._generate_speech_async(text, voice, pitch, volume, rate, use_llm, save_path)
++        # 确定语言
++        if 'zh-' in voice.lower():
++            language = 'zh'
++        elif 'en-' in voice.lower():
++            language = 'en'
++        elif 'ja-' in voice.lower():
++            language = 'ja'
++        else:
++            language = 'zh'  # 默认中文
+         
+-        # 1. 发送生成请求（同步接口）
+-        generate_url = f"{self.api_url}/generate"
++        # 使用新的API接口
++        generate_url = f"{self.api_url}/tts-public/generate"
++        
++        # 构建请求payload
+         payload = {
+             "text": text,
+-            "voice": voice,
+-            "pitch": pitch,
+-            "volume": volume,
+-            "rate": rate
++            "language": language,
++            "config": {
++                "rate": rate,
++                "pitch": pitch,
++                "volume": volume,
++                "voice": voice
++            }
+         }
+-        
+-        # 只在需要时添加 useLLM 参数
+-        if use_llm:
+-            payload["useLLM"] = use_llm
+         
+         print(f"正在生成语音: {text[:50]}...")
+         
+         try:
+             # 添加必要的请求头
+             headers = {
+-                'accept': 'application/json, text/plain, */*',
+-                'content-type': 'application/json',
+-                'origin': self.base_url,
+-                'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
++                'Content-Type': 'application/json; charset=utf-8'
+             }
+             
+             # 发送POST请求生成音频
+-            response = requests.post(generate_url, json=payload, headers=headers, timeout=60)
++            response = requests.post(generate_url, json=payload, headers=headers, timeout=30)
+             
+             # 如果请求失败，打印详细错误信息
+             if response.status_code != 200:
+@@ -85,90 +91,93 @@
+             result = response.json()
+             
+             if not result.get('success'):
+-                raise Exception(f"生成失败: {result.get('message', '未知错误')}")
++                raise Exception(f"生成失败: {result.get('error', '未知错误')}")
+             
+-            # 获取文件信息
++            # 获取返回数据
+             data = result['data']
+-            audio_file = data['file']  # MP3文件名
+-            srt_file = data.get('srt')  # 字幕文件名（如果有）
++            
++            # 解析音频数据
++            audio_base64 = data['audio_base64']
++            if not audio_base64.startswith('data:audio/mp3;base64,'):
++                raise ValueError("音频数据格式错误")
++            
++            # 提取Base64数据部分并解码
++            audio_data = base64.b64decode(audio_base64.split(',')[1])
++            
++            # 创建保存目录
++            Path(save_path).mkdir(parents=True, exist_ok=True)
+             
+-            print(f"生成成功，音频文件: {audio_file}")
++            # 生成文件名（使用文本的哈希值）
++            text_hash = hashlib.md5(text.encode()).hexdigest()[:8]
++            audio_filename = f"tts_{text_hash}.mp3"
++            audio_path = os.path.join(save_path, audio_filename)
+             
+-            # 2. 下载音频文件
+-            audio_path = self.download_file(audio_file, save_path)
++            # 保存音频文件
++            with open(audio_path, 'wb') as f:
++                f.write(audio_data)
+             
+-            # 3. 下载字幕文件（如果存在）
++            print(f"生成成功，音频文件已保存: {audio_path}")
++            print(f"音频时长: {data['duration']:.2f}秒")
++            print(f"文件大小: {data['file_size']:,} 字节")
++            print(f"使用语音: {data['voice']}")
++            
++            # 保存字幕文件（如果有）
+             srt_path = None
+-            if srt_file:
+-                try:
+-                    srt_path = self.download_file(srt_file, save_path)
+-                except Exception as e:
+-                    print(f"下载字幕文件失败: {e}")
++            if data.get('subtitle_text'):
++                srt_filename = f"tts_{text_hash}.srt"
++                srt_path = os.path.join(save_path, srt_filename)
++                with open(srt_path, 'w', encoding='utf-8') as f:
++                    f.write(data['subtitle_text'])
++                print(f"字幕文件已保存: {srt_path}")
+             
+             return {
+                 'success': True,
+                 'audio_path': audio_path,
+                 'srt_path': srt_path,
+                 'text': text,
+-                'voice': voice
++                'voice': data['voice'],
++                'duration': data['duration'],
++                'file_size': data['file_size']
+             }
+             
+-        except requests.exceptions.RequestException as e:
+-            raise Exception(f"请求失败: {e}")
++        except requests.exceptions.Timeout:
++            raise Exception("请求超时，请稍后重试")
++        except requests.exceptions.ConnectionError:
++            raise Exception(f"无法连接到服务器: {self.base_url}")
++        except requests.exceptions.HTTPError as e:
++            raise Exception(f"HTTP错误: {e}")
+         except Exception as e:
+             raise Exception(f"生成语音失败: {e}")
+     
+-    def download_file(self, filename, save_path="./downloads"):
+-        """
+-        下载文件
+-        
+-        Args:
+-            filename: 要下载的文件名
+-            save_path: 保存目录
+-        
+-        Returns:
+-            str: 保存的文件完整路径
+-        """
+-        download_url = f"{self.api_url}/download/{filename}"
+-        
+-        # 创建保存目录
+-        Path(save_path).mkdir(parents=True, exist_ok=True)
+-        
+-        # 下载文件
+-        response = requests.get(download_url, stream=True)
+-        response.raise_for_status()
+-        
+-        # 保存到本地
+-        file_path = os.path.join(save_path, filename)
+-        with open(file_path, 'wb') as f:
+-            for chunk in response.iter_content(chunk_size=8192):
+-                if chunk:
+-                    f.write(chunk)
+-        
+-        print(f"文件已保存到: {file_path}")
+-        return file_path
+ 
+-    def get_voice_list(self):
++    def get_voice_list(self, language=None):
+         """获取可用语音列表"""
+         try:
+-            response = requests.get(f"{self.api_url}/voiceList")
++            response = requests.get(f"{self.api_url}/tts-public/voices", timeout=10)
+             response.raise_for_status()
+-            return response.json()
++            result = response.json()
++            
++            voices_data = result.get('data', {})
++            
++            if language:
++                return voices_data.get(language, [])
++            return voices_data
++            
+         except Exception as e:
+             print(f"获取语音列表失败: {e}")
+             return None
+ 
+-    def get_engines(self):
+-        """获取可用的TTS引擎"""
++    def check_status(self):
++        """检查TTS服务状态"""
+         try:
+-            response = requests.get(f"{self.api_url}/engines")
++            response = requests.get(f"{self.api_url}/tts-public/status", timeout=5)
+             response.raise_for_status()
+-            return response.json()
+-        except Exception as e:
+-            print(f"获取引擎列表失败: {e}")
+-            return None
++            result = response.json()
++            return result['data']['service_status']
++        except:
++            return 'unknown'
+     
+-    def _generate_speech_async(self, text, voice, pitch, volume, rate, use_llm, save_path, max_wait=300):
++    def _generate_speech_async_deprecated(self, text, voice, pitch, volume, rate, use_llm, save_path, max_wait=300):
+         """
+         异步生成语音（用于长文本）
+         
+@@ -323,11 +332,13 @@
+             rate: 语速调整
+             save_path: 保存文件的目录
+             line_num: 行号
+-            use_llm: 是否使用LLM处理文本
++            use_llm: 是否使用LLM处理文本（暂不支持）
+         
+         Returns:
+             dict: 包含文件路径等信息的结果
+         """
++        import base64
++        from pathlib import Path
+         
+         # 如果是英文语音，清理文本
+         if 'en-' in voice.lower():
+@@ -338,38 +349,41 @@
+                 logger.debug(f"原始文本: {original_text[:100]}...")
+                 logger.debug(f"清理后文本: {text[:100]}...")
+         
+-        # 检查文本长度，超过200字符使用异步接口
+-        if len(text) > 200:
+-            logger.info(f"文本长度 {len(text)} 字符，使用异步接口...")
+-            return self._generate_speech_async_with_line_num(text, voice, pitch, volume, rate, use_llm, save_path, line_num)
++        # 确定语言
++        if 'zh-' in voice.lower():
++            language = 'zh'
++        elif 'en-' in voice.lower():
++            language = 'en'
++        elif 'ja-' in voice.lower():
++            language = 'ja'
++        else:
++            language = 'en'  # 默认英文（用于故事）
+         
+-        # 1. 发送生成请求（同步接口）
+-        generate_url = f"{self.api_url}/generate"
++        # 使用新的API接口
++        generate_url = f"{self.api_url}/tts-public/generate"
++        
++        # 构建请求payload
+         payload = {
+             "text": text,
+-            "voice": voice,
+-            "pitch": pitch,
+-            "volume": volume,
+-            "rate": rate
++            "language": language,
++            "config": {
++                "rate": rate if rate.startswith('+') or rate.startswith('-') else f"+{rate}",
++                "pitch": pitch if pitch.startswith('+') or pitch.startswith('-') else f"+{pitch}",
++                "volume": volume if volume.startswith('+') or volume.startswith('-') else f"+{volume}",
++                "voice": voice
++            }
+         }
+-        
+-        # 只在需要时添加 useLLM 参数
+-        if use_llm:
+-            payload["useLLM"] = use_llm
+         
+-        print(f"正在生成语音: {text[:50]}...")
++        print(f"正在生成语音 (行号: {line_num}): {text[:50]}...")
+         
+         try:
+             # 添加必要的请求头
+             headers = {
+-                'accept': 'application/json, text/plain, */*',
+-                'content-type': 'application/json',
+-                'origin': self.base_url,
+-                'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
++                'Content-Type': 'application/json; charset=utf-8'
+             }
+             
+             # 发送POST请求生成音频
+-            response = requests.post(generate_url, json=payload, headers=headers, timeout=60)
++            response = requests.post(generate_url, json=payload, headers=headers, timeout=30)
+             
+             # 如果请求失败，打印详细错误信息
+             if response.status_code != 200:
+@@ -381,44 +395,63 @@
+             result = response.json()
+             
+             if not result.get('success'):
+-                raise Exception(f"生成失败: {result.get('message', '未知错误')}")
++                raise Exception(f"生成失败: {result.get('error', '未知错误')}")
+             
+-            # 获取文件信息
++            # 获取返回数据
+             data = result['data']
+-            audio_file = data['file']  # MP3文件名
+-            srt_file = data.get('srt')  # 字幕文件名（如果有）
++            
++            # 解析音频数据
++            audio_base64 = data['audio_base64']
++            if not audio_base64.startswith('data:audio/mp3;base64,'):
++                raise ValueError("音频数据格式错误")
+             
+-            print(f"生成成功，音频文件: {audio_file}")
++            # 提取Base64数据部分并解码
++            audio_data = base64.b64decode(audio_base64.split(',')[1])
+             
+-            # 2. 下载音频文件并重命名
++            # 创建保存目录
++            Path(save_path).mkdir(parents=True, exist_ok=True)
++            
++            # 使用行号命名文件
+             audio_filename = f"line_{line_num:04d}.mp3"
+-            audio_path = self.download_file_with_rename(audio_file, save_path, audio_filename)
++            audio_path = os.path.join(save_path, audio_filename)
++            
++            # 保存音频文件
++            with open(audio_path, 'wb') as f:
++                f.write(audio_data)
+             
+-            # 3. 下载字幕文件（如果存在）并重命名
++            print(f"生成成功，音频文件已保存: {audio_path}")
++            
++            # 保存字幕文件（如果有）
+             srt_path = None
+-            if srt_file:
+-                try:
+-                    srt_filename = f"line_{line_num:04d}.srt"
+-                    srt_path = self.download_file_with_rename(srt_file, save_path, srt_filename)
+-                except Exception as e:
+-                    print(f"下载字幕文件失败: {e}")
++            if data.get('subtitle_text'):
++                srt_filename = f"line_{line_num:04d}.srt"
++                srt_path = os.path.join(save_path, srt_filename)
++                with open(srt_path, 'w', encoding='utf-8') as f:
++                    f.write(data['subtitle_text'])
++                print(f"字幕文件已保存: {srt_path}")
+             
+             return {
+                 'success': True,
+                 'audio_path': audio_path,
+                 'srt_path': srt_path,
+                 'text': text,
+-                'voice': voice
++                'voice': data['voice'],
++                'duration': data.get('duration', 0),
++                'file_size': data.get('file_size', 0)
+             }
+             
+-        except requests.exceptions.RequestException as e:
+-            raise Exception(f"请求失败: {e}")
++        except requests.exceptions.Timeout:
++            raise Exception(f"请求超时（行号: {line_num}），请稍后重试")
++        except requests.exceptions.ConnectionError:
++            raise Exception(f"无法连接到服务器: {self.base_url}")
++        except requests.exceptions.HTTPError as e:
++            raise Exception(f"HTTP错误（行号: {line_num}）: {e}")
+         except Exception as e:
+-            raise Exception(f"生成语音失败: {e}")
++            raise Exception(f"生成语音失败（行号: {line_num}）: {e}")
+     
+-    def _generate_speech_async_with_line_num(self, text, voice, pitch, volume, rate, use_llm, save_path, line_num, max_wait=300):
++    def _generate_speech_async_with_line_num_deprecated(self, text, voice, pitch, volume, rate, use_llm, save_path, line_num, max_wait=300):
+         """
+-        异步生成语音并使用行号命名（用于长文本）
++        [已弃用] 异步生成语音并使用行号命名（用于长文本）
+         """
+         
+         # 处理服务端路径问题：确保文本开头不包含特殊字符
+@@ -543,36 +576,6 @@
+         
+         raise Exception(f"任务超时，等待时间超过 {max_wait} 秒")
+     
+-    def download_file_with_rename(self, filename, save_path, new_filename):
+-        """
+-        下载文件并重命名
+-        
+-        Args:
+-            filename: 要下载的文件名
+-            save_path: 保存目录
+-            new_filename: 新文件名
+-        
+-        Returns:
+-            str: 保存的文件完整路径
+-        """
+-        download_url = f"{self.api_url}/download/{filename}"
+-        
+-        # 创建保存目录
+-        Path(save_path).mkdir(parents=True, exist_ok=True)
+-        
+-        # 下载文件
+-        response = requests.get(download_url, stream=True)
+-        response.raise_for_status()
+-        
+-        # 保存到本地（使用新文件名）
+-        file_path = os.path.join(save_path, new_filename)
+-        with open(file_path, 'wb') as f:
+-            for chunk in response.iter_content(chunk_size=8192):
+-                if chunk:
+-                    f.write(chunk)
+-        
+-        print(f"文件已保存到: {file_path}")
+-        return file_path
+     
+     def _prepare_text_for_async_api(self, text):
+         """
+@@ -805,7 +808,7 @@
+         if not os.path.exists(story_path):
+             raise Exception(f"故事文件不存在: {story_path}")
+         
+-        # 选择语音
++        # 选择语音（注意：新API可能需要不同的语音名称）
+         voice = "en-US-BrianNeural" if gender == "male" else "en-US-AvaNeural"
+         
+         # 创建临时目录（使用cid和vid作为子目录，避免多任务冲突）
+@@ -848,9 +851,9 @@
+                     result = self.generate_speech_with_line_num(
+                         text=line,
+                         voice=voice,
+-                        pitch="0Hz",
+-                        volume="0%", 
+-                        rate="0%",
++                        pitch="+0Hz",
++                        volume="+0%", 
++                        rate="+0%",
+                         save_path=tmp_dir,
+                         line_num=line_num
+                     )
+@@ -914,7 +917,7 @@
+     gender = "male" if args.gender == 1 else "female"
+     
+     # 创建客户端实例
+-    client = TTSClient("http://localhost:3000")
++    client = TTSClient("http://localhost:18765")
+     
+     try:
+         print(f"开始生成故事音频...")
+Index: pipeline_steps_v3.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>#!/usr/bin/env python\n# -*- coding: utf-8 -*-\n\"\"\"\nPipeline Steps V3 - 新版本的Pipeline步骤实现\n严格模式：任何失败都会导致Pipeline终止\n\"\"\"\n\nimport json\nimport re\nimport sys\nimport logging\nfrom typing import Dict, Any, List, Optional\nfrom pathlib import Path\n\nfrom pipeline_architecture import PipelineStep, StepResult\nfrom pipeline_context_v3 import PipelineContextV3\nfrom youtube_client import YouTubeAPIClient\nfrom gemini_client import GeminiClient\nfrom text_processor import TextProcessor\n\nlogger = logging.getLogger(__name__)\n\n\n# ============= 数据获取步骤 =============\n\nclass FetchYouTubeDataV3Step(PipelineStep):\n    \"\"\"获取YouTube数据 - V3版本\"\"\"\n    \n    def __init__(self, youtube_client: YouTubeAPIClient):\n        super().__init__(\"fetch_youtube_data_v3\")\n        self.youtube_client = youtube_client\n    \n    def execute(self, context: PipelineContextV3) -> StepResult:\n        \"\"\"执行数据获取\"\"\"\n        try:\n            # 检查缓存\n            if context.cache_dir:\n                cached_data = self._load_cached_data(context)\n                if cached_data:\n                    context.update(**cached_data)\n                    logger.info(f\"✅ 从缓存加载YouTube数据\")\n                    return StepResult(success=True, data=cached_data)\n            \n            # 获取视频信息\n            logger.info(f\"\uD83D\uDCCA 获取视频信息: {context.video_id}\")\n            video_details = self.youtube_client.get_video_details([context.video_id])\n            if not video_details or not video_details.get('items'):\n                raise Exception(f\"Failed to fetch video details for {context.video_id}\")\n            \n            video_info = video_details['items'][0]\n            context.video_info = {\n                'title': video_info['snippet']['title'],\n                'description': video_info['snippet']['description'],\n                'channel_title': video_info['snippet']['channelTitle']\n            }\n            \n            # 获取评论\n            logger.info(\"\uD83D\uDCAC 获取热门评论\")\n            comments_data = self.youtube_client.get_video_comments(\n                context.video_id, max_results=10\n            )\n            if comments_data and comments_data.get('items'):\n                comments = []\n                for item in comments_data['items']:\n                    snippet = item['snippet']['topLevelComment']['snippet']\n                    comments.append({\n                        'text': snippet['textDisplay'],\n                        'likes': snippet['likeCount'],\n                        'author': snippet['authorDisplayName']\n                    })\n                context.comments = sorted(\n                    comments, key=lambda x: x['likes'], reverse=True\n                )[:5]\n            \n            # 获取字幕（必须成功）\n            logger.info(\"\uD83D\uDCDD 获取视频字幕\")\n            result = self.youtube_client.get_video_transcript(context.video_id)\n            if not result:\n                raise Exception(f\"Failed to fetch transcript for {context.video_id} - TERMINATING\")\n            \n            _, subtitle_text = result\n            context.subtitles = subtitle_text\n            \n            # 保存缓存\n            if context.save_intermediate and context.cache_dir:\n                self._save_cached_data(context)\n            \n            logger.info(f\"✅ YouTube数据获取成功\")\n            return StepResult(success=True)\n            \n        except Exception as e:\n            error_msg = f\"Failed to fetch YouTube data: {e}\"\n            logger.error(f\"❌ {error_msg}\")\n            context.add_error(error_msg)\n            return StepResult(success=False, error=error_msg)\n    \n    def _load_cached_data(self, context: PipelineContextV3) -> Optional[Dict]:\n        \"\"\"加载缓存数据\"\"\"\n        try:\n            cache_dir = context.cache_dir / \"raw\"\n            \n            data = {}\n            \n            # 加载视频信息\n            video_file = cache_dir / \"video_info.json\"\n            if video_file.exists():\n                with open(video_file, 'r', encoding='utf-8') as f:\n                    data['video_info'] = json.load(f)\n            \n            # 加载评论\n            comments_file = cache_dir / \"comments.json\"\n            if comments_file.exists():\n                with open(comments_file, 'r', encoding='utf-8') as f:\n                    data['comments'] = json.load(f)\n            \n            # 加载字幕\n            subtitle_file = cache_dir / \"subtitle.txt\"\n            if subtitle_file.exists():\n                with open(subtitle_file, 'r', encoding='utf-8') as f:\n                    data['subtitles'] = f.read()\n            \n            # 只有所有必需数据都存在才返回缓存\n            if data.get('subtitles'):\n                return data\n                \n        except Exception as e:\n            logger.warning(f\"Failed to load cache: {e}\")\n        \n        return None\n    \n    def _save_cached_data(self, context: PipelineContextV3):\n        \"\"\"保存缓存数据\"\"\"\n        try:\n            cache_dir = context.cache_dir / \"raw\"\n            cache_dir.mkdir(parents=True, exist_ok=True)\n            \n            # 保存视频信息\n            with open(cache_dir / \"video_info.json\", 'w', encoding='utf-8') as f:\n                json.dump(context.video_info, f, ensure_ascii=False, indent=2)\n            \n            # 保存评论\n            with open(cache_dir / \"comments.json\", 'w', encoding='utf-8') as f:\n                json.dump(context.comments, f, ensure_ascii=False, indent=2)\n            \n            # 保存字幕\n            with open(cache_dir / \"subtitle.txt\", 'w', encoding='utf-8') as f:\n                f.write(context.subtitles)\n                \n        except Exception as e:\n            logger.warning(f\"Failed to save cache: {e}\")\n\n\n# ============= Framework V3 生成步骤 =============\n\nclass GenerateFrameworkV3Step(PipelineStep):\n    \"\"\"使用framework_generatorv3.md生成JSON框架\"\"\"\n    \n    def __init__(self, gemini_client: GeminiClient):\n        super().__init__(\"generate_framework_v3\")\n        self.gemini_client = gemini_client\n    \n    def execute(self, context: PipelineContextV3) -> StepResult:\n        \"\"\"生成V3框架\"\"\"\n        try:\n            # 检查缓存\n            if context.cache_dir:\n                cached_framework = self._load_cached_framework(context)\n                if cached_framework:\n                    context.framework_v3_raw = cached_framework['raw']\n                    context.framework_v3_json = cached_framework['json']\n                    logger.info(\"✅ 从缓存加载Framework V3\")\n                    return StepResult(success=True, data=cached_framework)\n            \n            # 构建输入\n            input_data = self._build_input(context)\n            \n            # 获取提示词\n            if not self.prompt_manager:\n                raise Exception(\"Prompt manager not set - TERMINATING\")\n            \n            prompt = self.prompt_manager.get_prompt('framework_generatorv3')\n            full_prompt = prompt + \"\\n\" + input_data\n            \n            logger.info(\"\uD83E\uDD16 调用AI生成Framework V3...\")\n            response = self.gemini_client.generate_content(full_prompt)\n            \n            if not response:\n                raise Exception(\"Framework V3 generation failed - empty response - TERMINATING\")\n            \n            context.framework_v3_raw = response\n            \n            # 解析JSON\n            json_match = re.search(r'\\{.*\\}', response, re.DOTALL)\n            if not json_match:\n                raise Exception(\"Failed to extract JSON from response - TERMINATING\")\n            \n            try:\n                context.framework_v3_json = json.loads(json_match.group())\n            except json.JSONDecodeError as e:\n                raise Exception(f\"Failed to parse JSON: {e} - TERMINATING\")\n            \n            # 验证JSON结构\n            if 'storyBlueprint' not in context.framework_v3_json:\n                raise Exception(\"Invalid JSON structure: missing storyBlueprint - TERMINATING\")\n            \n            # 保存缓存\n            if context.save_intermediate and context.cache_dir:\n                self._save_cached_framework(context)\n            \n            logger.info(f\"✅ Framework V3生成成功\")\n            return StepResult(success=True)\n            \n        except Exception as e:\n            error_msg = f\"Framework V3 generation failed: {e}\"\n            logger.error(f\"❌ {error_msg}\")\n            context.add_error(error_msg)\n            return StepResult(success=False, error=error_msg)\n    \n    def _build_input(self, context: PipelineContextV3) -> str:\n        \"\"\"构建输入格式\"\"\"\n        comments_text = \"\\n\".join([c['text'] for c in context.comments[:5]])\n        \n        return f\"\"\"[START_OF_INPUT_DATA]\nOriginal Title\n{context.video_info.get('title', 'N/A')}\n\nOriginal Reference Word Count\n{len(context.subtitles)}\n\nHot Comments\n{comments_text}\n\nOriginal Story Text\n{context.subtitles}\n[END_OF_INPUT_DATA]\"\"\"\n    \n    def _load_cached_framework(self, context: PipelineContextV3) -> Optional[Dict]:\n        \"\"\"加载缓存的框架\"\"\"\n        try:\n            cache_file = context.cache_dir / \"processing\" / \"framework_v3.json\"\n            if cache_file.exists():\n                with open(cache_file, 'r', encoding='utf-8') as f:\n                    data = json.load(f)\n                return data\n        except Exception as e:\n            logger.warning(f\"Failed to load cached framework: {e}\")\n        return None\n    \n    def _save_cached_framework(self, context: PipelineContextV3):\n        \"\"\"保存框架缓存\"\"\"\n        try:\n            cache_dir = context.cache_dir / \"processing\"\n            cache_dir.mkdir(parents=True, exist_ok=True)\n            \n            data = {\n                'raw': context.framework_v3_raw,\n                'json': context.framework_v3_json\n            }\n            \n            with open(cache_dir / \"framework_v3.json\", 'w', encoding='utf-8') as f:\n                json.dump(data, f, ensure_ascii=False, indent=2)\n                \n        except Exception as e:\n            logger.warning(f\"Failed to save framework cache: {e}\")\n\n\n# ============= 框架解析步骤 =============\n\nclass ParseFrameworkV3Step(PipelineStep):\n    \"\"\"解析V3框架，提取segment信息\"\"\"\n    \n    def __init__(self):\n        super().__init__(\"parse_framework_v3\")\n    \n    def execute(self, context: PipelineContextV3) -> StepResult:\n        \"\"\"解析框架\"\"\"\n        try:\n            if not context.framework_v3_json:\n                raise Exception(\"No framework JSON to parse - TERMINATING\")\n            \n            # 提取storyBlueprint\n            blueprint = context.framework_v3_json.get('storyBlueprint', [])\n            \n            if not blueprint:\n                raise Exception(\"Empty storyBlueprint - TERMINATING\")\n            \n            # 设置segment数量和任务\n            context.segment_count = len(blueprint)\n            context.segment_tasks = blueprint\n            \n            logger.info(f\"\uD83D\uDCCB 解析出 {context.segment_count} 个segments\")\n            \n            # 保存解析结果\n            if context.save_intermediate and context.cache_dir:\n                self._save_parsed_info(context)\n            \n            return StepResult(success=True, data={\n                'segment_count': context.segment_count,\n                'tasks': context.segment_tasks\n            })\n            \n        except Exception as e:\n            error_msg = f\"Framework parsing failed: {e}\"\n            logger.error(f\"❌ {error_msg}\")\n            context.add_error(error_msg)\n            return StepResult(success=False, error=error_msg)\n    \n    def _save_parsed_info(self, context: PipelineContextV3):\n        \"\"\"保存解析信息\"\"\"\n        try:\n            cache_dir = context.cache_dir / \"processing\"\n            cache_dir.mkdir(parents=True, exist_ok=True)\n            \n            info = {\n                'segment_count': context.segment_count,\n                'segment_tasks': context.segment_tasks\n            }\n            \n            with open(cache_dir / \"parsed_segments.json\", 'w', encoding='utf-8') as f:\n                json.dump(info, f, ensure_ascii=False, indent=2)\n                \n        except Exception as e:\n            logger.warning(f\"Failed to save parsed info: {e}\")\n\n\n# ============= 开头生成步骤 =============\n\nclass GenerateStoryHeaderStep(PipelineStep):\n    \"\"\"生成故事开头\"\"\"\n    \n    def __init__(self, gemini_client: GeminiClient):\n        super().__init__(\"generate_story_header\")\n        self.gemini_client = gemini_client\n    \n    def execute(self, context: PipelineContextV3) -> StepResult:\n        \"\"\"生成开头\"\"\"\n        try:\n            # 检查缓存\n            if context.cache_dir:\n                cached_header = self._load_cached_header(context)\n                if cached_header:\n                    context.story_header = cached_header\n                    logger.info(\"✅ 从缓存加载故事开头\")\n                    return StepResult(success=True, data={'header': cached_header})\n            \n            # 获取提示词\n            if not self.prompt_manager:\n                raise Exception(\"Prompt manager not set - TERMINATING\")\n            \n            # 准备输入：完整的V3 JSON\n            json_input = json.dumps(context.framework_v3_json, indent=2, ensure_ascii=False)\n            \n            prompt = self.prompt_manager.get_prompt('story_header')\n            full_prompt = prompt + \"\\n\\n\" + json_input\n            \n            logger.info(\"\uD83C\uDFAF 生成故事开头...\")\n            response = self.gemini_client.generate_content(full_prompt)\n            \n            if not response:\n                raise Exception(\"Header generation failed - empty response - TERMINATING\")\n            \n            context.story_header = response\n            \n            # 保存缓存\n            if context.save_intermediate and context.cache_dir:\n                self._save_cached_header(context)\n            \n            logger.info(f\"✅ 开头生成成功，长度: {len(response)}字符\")\n            return StepResult(success=True)\n            \n        except Exception as e:\n            error_msg = f\"Header generation failed: {e}\"\n            logger.error(f\"❌ {error_msg}\")\n            context.add_error(error_msg)\n            return StepResult(success=False, error=error_msg)\n    \n    def _load_cached_header(self, context: PipelineContextV3) -> Optional[str]:\n        \"\"\"加载缓存的开头\"\"\"\n        try:\n            cache_file = context.cache_dir / \"processing\" / \"story_header.txt\"\n            if cache_file.exists():\n                with open(cache_file, 'r', encoding='utf-8') as f:\n                    return f.read()\n        except Exception as e:\n            logger.warning(f\"Failed to load cached header: {e}\")\n        return None\n    \n    def _save_cached_header(self, context: PipelineContextV3):\n        \"\"\"保存开头缓存\"\"\"\n        try:\n            cache_dir = context.cache_dir / \"processing\"\n            cache_dir.mkdir(parents=True, exist_ok=True)\n            \n            with open(cache_dir / \"story_header.txt\", 'w', encoding='utf-8') as f:\n                f.write(context.story_header)\n                \n        except Exception as e:\n            logger.warning(f\"Failed to save header cache: {e}\")\n\n\n# ============= Segment生成步骤 =============\n\nclass GenerateAllSegmentsStep(PipelineStep):\n    \"\"\"生成所有segments\"\"\"\n    \n    def __init__(self, gemini_client: GeminiClient):\n        super().__init__(\"generate_all_segments\")\n        self.gemini_client = gemini_client\n    \n    def execute(self, context: PipelineContextV3) -> StepResult:\n        \"\"\"生成所有segments\"\"\"\n        try:\n            segments = []\n            segments_dir = None\n            \n            if context.cache_dir:\n                segments_dir = context.cache_dir / \"processing\" / \"segments\"\n                segments_dir.mkdir(parents=True, exist_ok=True)\n            \n            # 逐个生成segment\n            for i in range(context.segment_count):\n                logger.info(f\"\uD83D\uDCDD 生成Segment {i+1}/{context.segment_count}\")\n                \n                # 检查缓存\n                cached_segment = None\n                if segments_dir:\n                    cached_segment = self._load_cached_segment(segments_dir, i+1)\n                \n                if cached_segment:\n                    segments.append(cached_segment)\n                    logger.info(f\"  ✅ 从缓存加载Segment {i+1}\")\n                    continue\n                \n                # 生成新segment\n                segment = self._generate_single_segment(context, i, segments)\n                \n                if not segment:\n                    raise Exception(f\"Segment {i+1} generation failed - TERMINATING\")\n                \n                segments.append(segment)\n                \n                # 保存缓存\n                if segments_dir:\n                    self._save_cached_segment(segments_dir, i+1, segment)\n                \n                logger.info(f\"  ✅ Segment {i+1} 生成成功，长度: {len(segment)}字符\")\n            \n            context.segments = segments\n            logger.info(f\"✅ 所有 {len(segments)} 个segments生成完成\")\n            \n            return StepResult(success=True, data={'segments': segments})\n            \n        except Exception as e:\n            error_msg = f\"Segments generation failed: {e}\"\n            logger.error(f\"❌ {error_msg}\")\n            context.add_error(error_msg)\n            return StepResult(success=False, error=error_msg)\n    \n    def _generate_single_segment(self, context: PipelineContextV3, \n                                 index: int, \n                                 previous_segments: List[str]) -> Optional[str]:\n        \"\"\"生成单个segment\"\"\"\n        try:\n            # 获取提示词\n            if not self.prompt_manager:\n                raise Exception(\"Prompt manager not set\")\n            \n            # 获取前文（200字）\n            if index == 0:\n                # 第一个segment，使用header的最后200字\n                previous_text = context.story_header[-200:] if context.story_header else \"\"\n            else:\n                # 使用上一个segment的最后200字\n                previous_text = previous_segments[-1][-200:] if previous_segments else \"\"\n            \n            # 获取当前step信息\n            current_task = context.segment_tasks[index]\n            \n            # 构建输入\n            segment_input = self._build_segment_input(\n                context.framework_v3_json,\n                index + 1,  # step编号从1开始\n                current_task,\n                previous_text\n            )\n            \n            # 获取segment提示词并组合\n            segment_prompt = self.prompt_manager.get_prompt('segment_generator')\n            full_prompt = segment_prompt + \"\\n\\n\" + segment_input\n            \n            # 调用AI生成\n            response = self.gemini_client.generate_content(full_prompt)\n            \n            return response if response else None\n            \n        except Exception as e:\n            logger.error(f\"Failed to generate segment {index+1}: {e}\")\n            return None\n    \n    def _build_segment_input(self, framework_json: Dict, \n                            step_num: int, \n                            current_task: Dict,\n                            previous_text: str) -> str:\n        \"\"\"构建segment生成的输入\"\"\"\n        # 准备框架JSON\n        framework_str = json.dumps(framework_json, indent=2, ensure_ascii=False)\n        \n        # 准备当前任务信息\n        task_str = json.dumps(current_task, indent=2, ensure_ascii=False)\n        \n        return f\"\"\"==================================================\nFRAMEWORK V3 (Complete JSON)\n==================================================\n{framework_str}\n\n==================================================\nCURRENT STEP NUMBER\n==================================================\nStep {step_num}\n\n==================================================\nCURRENT STEP TASK\n==================================================\n{task_str}\n\n==================================================\nPREVIOUS TEXT (Last 200 characters)\n==================================================\n{previous_text if previous_text else \"[This is the first segment after header]\"}\n\"\"\"\n    \n    def _load_cached_segment(self, segments_dir: Path, segment_num: int) -> Optional[str]:\n        \"\"\"加载缓存的segment\"\"\"\n        try:\n            cache_file = segments_dir / f\"segment_{segment_num:02d}.txt\"\n            if cache_file.exists():\n                with open(cache_file, 'r', encoding='utf-8') as f:\n                    return f.read()\n        except Exception as e:\n            logger.warning(f\"Failed to load cached segment {segment_num}: {e}\")\n        return None\n    \n    def _save_cached_segment(self, segments_dir: Path, segment_num: int, content: str):\n        \"\"\"保存segment缓存\"\"\"\n        try:\n            cache_file = segments_dir / f\"segment_{segment_num:02d}.txt\"\n            with open(cache_file, 'w', encoding='utf-8') as f:\n                f.write(content)\n        except Exception as e:\n            logger.warning(f\"Failed to save segment {segment_num}: {e}\")\n\n\n# ============= 拼接和润色步骤 =============\n\nclass MergeAndPolishStep(PipelineStep):\n    \"\"\"拼接所有内容并润色\"\"\"\n    \n    def __init__(self, gemini_client: GeminiClient):\n        super().__init__(\"merge_and_polish\")\n        self.gemini_client = gemini_client\n        self.text_processor = TextProcessor()\n    \n    def execute(self, context: PipelineContextV3) -> StepResult:\n        \"\"\"执行拼接和润色\"\"\"\n        try:\n            # 拼接所有内容\n            logger.info(\"\uD83D\uDD17 拼接故事内容...\")\n            merged_parts = [context.story_header] + context.segments\n            context.merged_story = \"\\n\\n\".join(merged_parts)\n            \n            # 保存拼接结果\n            if context.save_intermediate and context.cache_dir:\n                cache_dir = context.cache_dir / \"processing\"\n                cache_dir.mkdir(parents=True, exist_ok=True)\n                with open(cache_dir / \"merged_story.txt\", 'w', encoding='utf-8') as f:\n                    f.write(context.merged_story)\n            \n            logger.info(f\"  ✅ 拼接完成，总长度: {len(context.merged_story)}字符\")\n            \n            # 检查润色缓存\n            if context.cache_dir:\n                cached_polish = self._load_cached_polish(context)\n                if cached_polish:\n                    context.polished_story = cached_polish\n                    context.final_story = cached_polish\n                    logger.info(\"✅ 从缓存加载润色结果\")\n                    return StepResult(success=True)\n            \n            # 执行润色\n            logger.info(\"✨ 开始润色故事...\")\n            \n            # 获取润色提示词\n            if not self.prompt_manager:\n                raise Exception(\"Prompt manager not set - TERMINATING\")\n            \n            # 构建润色输入\n            polish_input = self.text_processor.format_polish_input(\n                json.dumps(context.framework_v3_json, indent=2, ensure_ascii=False),\n                context.merged_story,\n                num_segments=context.segment_count\n            )\n            \n            polish_prompt = self.prompt_manager.get_prompt('final_polisher')\n            full_prompt = polish_prompt + \"\\n\\n\" + polish_input\n            \n            response = self.gemini_client.generate_content(full_prompt)\n            \n            if not response:\n                # 润色失败，使用原始拼接版本\n                logger.warning(\"⚠\uFE0F 润色失败，使用原始版本\")\n                context.polished_story = context.merged_story\n                context.final_story = context.merged_story\n            else:\n                # 解析润色结果\n                polish_result = self.text_processor.parse_polish_output(response)\n                context.polished_story = polish_result.get('story', context.merged_story)\n                context.final_story = context.polished_story\n                \n                # 保存编辑报告\n                if 'report' in polish_result and context.cache_dir:\n                    report_file = context.cache_dir / \"processing\" / \"polish_report.txt\"\n                    with open(report_file, 'w', encoding='utf-8') as f:\n                        f.write(polish_result['report'])\n            \n            # 保存润色结果\n            if context.save_intermediate and context.cache_dir:\n                self._save_cached_polish(context)\n            \n            logger.info(f\"✅ 润色完成，最终长度: {len(context.final_story)}字符\")\n            return StepResult(success=True)\n            \n        except Exception as e:\n            # 润色失败不终止，使用原始版本\n            logger.warning(f\"Polish failed, using raw version: {e}\")\n            context.final_story = context.merged_story if context.merged_story else \"\"\n            return StepResult(success=True)  # 返回成功，继续流程\n    \n    def _load_cached_polish(self, context: PipelineContextV3) -> Optional[str]:\n        \"\"\"加载缓存的润色结果\"\"\"\n        try:\n            cache_file = context.cache_dir / \"processing\" / \"polished_story.txt\"\n            if cache_file.exists():\n                with open(cache_file, 'r', encoding='utf-8') as f:\n                    return f.read()\n        except Exception as e:\n            logger.warning(f\"Failed to load cached polish: {e}\")\n        return None\n    \n    def _save_cached_polish(self, context: PipelineContextV3):\n        \"\"\"保存润色结果\"\"\"\n        try:\n            cache_dir = context.cache_dir / \"processing\"\n            with open(cache_dir / \"polished_story.txt\", 'w', encoding='utf-8') as f:\n                f.write(context.polished_story)\n        except Exception as e:\n            logger.warning(f\"Failed to save polish cache: {e}\")\n\n\n# ============= 总结生成步骤 =============\n\nclass GenerateSummaryStep(PipelineStep):\n    \"\"\"生成中文总结\"\"\"\n    \n    def __init__(self, gemini_client: GeminiClient):\n        super().__init__(\"generate_summary\")\n        self.gemini_client = gemini_client\n    \n    def execute(self, context: PipelineContextV3) -> StepResult:\n        \"\"\"生成总结\"\"\"\n        try:\n            if not context.final_story:\n                logger.warning(\"No story to summarize\")\n                context.summary_cn = \"无故事内容\"\n                return StepResult(success=True)\n            \n            logger.info(\"\uD83D\uDCDD 生成中文总结...\")\n            \n            # 简单的总结提示词\n            summary_prompt = \"\"\"请为以下英文故事生成一份详细的中文总结。\n\n要求：\n1. 总结故事的主要情节（500字左右）\n2. 分析故事的核心主题和价值观\n3. 列出主要角色及其特点\n4. 评价故事的亮点和特色\n5. 提供YouTube发布建议（标题、标签、封面等）\n\n故事内容：\n\"\"\"\n            \n            # 只使用故事的前5000字进行总结（避免token限制）\n            story_excerpt = context.final_story[:5000] if len(context.final_story) > 5000 else context.final_story\n            \n            full_prompt = summary_prompt + story_excerpt\n            \n            response = self.gemini_client.generate_content(full_prompt)\n            \n            if response:\n                context.summary_cn = response\n                logger.info(\"✅ 中文总结生成成功\")\n            else:\n                context.summary_cn = \"总结生成失败\"\n                logger.warning(\"⚠\uFE0F 总结生成失败\")\n            \n            # 保存总结\n            if context.save_intermediate and context.cache_dir:\n                self._save_summary(context)\n            \n            return StepResult(success=True)\n            \n        except Exception as e:\n            # 总结失败不影响主流程\n            logger.warning(f\"Summary generation failed: {e}\")\n            context.summary_cn = f\"总结生成失败: {str(e)}\"\n            return StepResult(success=True)\n    \n    def _save_summary(self, context: PipelineContextV3):\n        \"\"\"保存总结\"\"\"\n        try:\n            final_dir = context.cache_dir / \"final\"\n            final_dir.mkdir(parents=True, exist_ok=True)\n            \n            with open(final_dir / \"summary_cn.txt\", 'w', encoding='utf-8') as f:\n                f.write(context.summary_cn)\n                \n        except Exception as e:\n            logger.warning(f\"Failed to save summary: {e}\")\n\n\n# ============= 最终输出步骤 =============\n\nclass SaveFinalOutputStep(PipelineStep):\n    \"\"\"保存最终输出文件\"\"\"\n    \n    def __init__(self):\n        super().__init__(\"save_final_output\")\n    \n    def execute(self, context: PipelineContextV3) -> StepResult:\n        \"\"\"保存所有最终文件\"\"\"\n        try:\n            if not context.cache_dir:\n                logger.warning(\"No cache directory specified\")\n                return StepResult(success=True)\n            \n            final_dir = context.cache_dir / \"final\"\n            final_dir.mkdir(parents=True, exist_ok=True)\n            \n            # 保存最终故事\n            with open(final_dir / \"story.txt\", 'w', encoding='utf-8') as f:\n                f.write(context.final_story)\n            \n            # 保存元数据\n            metadata = {\n                'video_id': context.video_id,\n                'creator_name': context.creator_name,\n                'video_title': context.video_info.get('title', 'N/A'),\n                'segment_count': context.segment_count,\n                'story_length': len(context.final_story),\n                'header_length': len(context.story_header),\n                'errors': context.errors\n            }\n            \n            with open(final_dir / \"metadata.json\", 'w', encoding='utf-8') as f:\n                json.dump(metadata, f, ensure_ascii=False, indent=2)\n            \n            # 生成报告\n            report = self._generate_report(context)\n            with open(final_dir / \"report.md\", 'w', encoding='utf-8') as f:\n                f.write(report)\n            \n            logger.info(f\"✅ 所有文件已保存到: {final_dir}\")\n            \n            return StepResult(success=True)\n            \n        except Exception as e:\n            error_msg = f\"Failed to save final output: {e}\"\n            logger.error(error_msg)\n            return StepResult(success=False, error=error_msg)\n    \n    def _generate_report(self, context: PipelineContextV3) -> str:\n        \"\"\"生成最终报告\"\"\"\n        from datetime import datetime\n        \n        return f\"\"\"# V3 Pipeline 执行报告\n\n生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n## 基本信息\n- **视频ID**: {context.video_id}\n- **创作者**: {context.creator_name}\n- **视频标题**: {context.video_info.get('title', 'N/A')}\n\n## 生成统计\n- **Segment数量**: {context.segment_count}\n- **开头长度**: {len(context.story_header)} 字符\n- **原始拼接长度**: {len(context.merged_story)} 字符\n- **最终故事长度**: {len(context.final_story)} 字符\n\n## 错误记录\n{chr(10).join(context.errors) if context.errors else '无错误'}\n\n## 中文总结\n{context.summary_cn}\n\n## 故事预览\n\n### 开头（前500字符）\n```\n{context.final_story[:500] if context.final_story else 'N/A'}\n```\n\n### 结尾（后500字符）\n```\n{context.final_story[-500:] if context.final_story else 'N/A'}\n```\n\n---\n*报告生成完毕*\n\"\"\"
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/pipeline_steps_v3.py b/pipeline_steps_v3.py
+--- a/pipeline_steps_v3.py	(revision c2ba01a8b402431c4e3f32d6d1684a5c64e7b225)
++++ b/pipeline_steps_v3.py	(date 1755619719403)
+@@ -17,6 +17,7 @@
+ from youtube_client import YouTubeAPIClient
+ from gemini_client import GeminiClient
+ from text_processor import TextProcessor
++import traceback
+ 
+ logger = logging.getLogger(__name__)
+ 
+@@ -212,6 +213,7 @@
+             
+         except Exception as e:
+             error_msg = f"Framework V3 generation failed: {e}"
++            traceback.print_exc()
+             logger.error(f"❌ {error_msg}")
+             context.add_error(error_msg)
+             return StepResult(success=False, error=error_msg)
+Index: .idea/shelf/___.xml
+===================================================================
+diff --git a/.idea/shelf/___.xml b/.idea/shelf/___.xml
+deleted file mode 100644
+--- a/.idea/shelf/___.xml	(revision c2ba01a8b402431c4e3f32d6d1684a5c64e7b225)
++++ /dev/null	(revision c2ba01a8b402431c4e3f32d6d1684a5c64e7b225)
+@@ -1,4 +0,0 @@
+-<changelist name="在变基之前未提交的更改_[更改]" date="1754667992282" recycled="true" deleted="true">
+-  <option name="PATH" value="$PROJECT_DIR$/.idea/shelf/在变基之前未提交的更改_[更改]/shelved.patch" />
+-  <option name="DESCRIPTION" value="在变基之前未提交的更改 [更改]" />
+-</changelist>
+\ No newline at end of file
+Index: .idea/workspace.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<project version=\"4\">\n  <component name=\"AutoImportSettings\">\n    <option name=\"autoReloadType\" value=\"SELECTIVE\" />\n  </component>\n  <component name=\"ChangeListManager\">\n    <list default=\"true\" id=\"b06674bc-41ad-4cbf-b795-3fc27c1ebd5f\" name=\"更改\" comment=\"x\">\n      <change afterPath=\"$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/.idea/misc.xml\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/.idea/story_generator.iml\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/.idea/vcs.xml\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/batch_metadata_extractor.py\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/docs/metadata_extractor_usage.md\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/docs/story_creator_v3_usage.md\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/docs/video_generate.md\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/draft_gen/draft_meta_info.json\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/draft_gen/draft_settings\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/draft_gen/generateDraftService.py\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/draft_gen/models/__init__.py\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/draft_gen/models/draft_effects_library.py\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/draft_gen/models/draft_models.py\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/draft_gen/models/draft_templates.py\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/prompts/channel_generator.md\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/prompts/dna_extractor2.md\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/prompts/fra,ewprl+gemeratev2.md\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/prompts/framework_generatorv3.md\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/prompts/story_generation_ascii.md\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/test_v3.py\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/video_list_example.txt\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/voice_gen/async_tts_client.py\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/voice_gen/tts_client.py\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/youtube_metadata_extractor.py\" afterDir=\"false\" />\n      <change afterPath=\"$PROJECT_DIR$/youtube_story_creator_v3.py\" afterDir=\"false\" />\n      <change beforePath=\"$PROJECT_DIR$/.env\" beforeDir=\"false\" afterPath=\"$PROJECT_DIR$/.env\" afterDir=\"false\" />\n      <change beforePath=\"$PROJECT_DIR$/.gitignore\" beforeDir=\"false\" afterPath=\"$PROJECT_DIR$/.gitignore\" afterDir=\"false\" />\n      <change beforePath=\"$PROJECT_DIR$/.idea/shelf/在变基之前未提交的更改_[更改]/shelved.patch\" beforeDir=\"false\" />\n      <change beforePath=\"$PROJECT_DIR$/.idea/workspace.xml\" beforeDir=\"false\" afterPath=\"$PROJECT_DIR$/.idea/workspace.xml\" afterDir=\"false\" />\n      <change beforePath=\"$PROJECT_DIR$/gemini_client.py\" beforeDir=\"false\" afterPath=\"$PROJECT_DIR$/gemini_client.py\" afterDir=\"false\" />\n      <change beforePath=\"$PROJECT_DIR$/prompts/segment_generator.md\" beforeDir=\"false\" afterPath=\"$PROJECT_DIR$/prompts/segment_generator.md\" afterDir=\"false\" />\n      <change beforePath=\"$PROJECT_DIR$/requirements.txt\" beforeDir=\"false\" afterPath=\"$PROJECT_DIR$/requirements.txt\" afterDir=\"false\" />\n      <change beforePath=\"$PROJECT_DIR$/test_debug_logging.py\" beforeDir=\"false\" />\n      <change beforePath=\"$PROJECT_DIR$/test_image_generation_v2.py\" beforeDir=\"false\" />\n      <change beforePath=\"$PROJECT_DIR$/test_image_prompt_generator.py\" beforeDir=\"false\" />\n      <change beforePath=\"$PROJECT_DIR$/test_jimeng_generator.py\" beforeDir=\"false\" />\n      <change beforePath=\"$PROJECT_DIR$/test_simple_generation.py\" beforeDir=\"false\" />\n      <change beforePath=\"$PROJECT_DIR$/test_three_step_flow.py\" beforeDir=\"false\" />\n      <change beforePath=\"$PROJECT_DIR$/text_processor.py\" beforeDir=\"false\" afterPath=\"$PROJECT_DIR$/text_processor.py\" afterDir=\"false\" />\n      <change beforePath=\"$PROJECT_DIR$/tts_client.py\" beforeDir=\"false\" />\n      <change beforePath=\"$PROJECT_DIR$/youtube_story_creator_v2.py\" beforeDir=\"false\" afterPath=\"$PROJECT_DIR$/youtube_story_creator_v2.py\" afterDir=\"false\" />\n    </list>\n    <option name=\"SHOW_DIALOG\" value=\"false\" />\n    <option name=\"HIGHLIGHT_CONFLICTS\" value=\"true\" />\n    <option name=\"HIGHLIGHT_NON_ACTIVE_CHANGELIST\" value=\"false\" />\n    <option name=\"LAST_RESOLUTION\" value=\"IGNORE\" />\n  </component>\n  <component name=\"FileTemplateManagerImpl\">\n    <option name=\"RECENT_TEMPLATES\">\n      <list>\n        <option value=\"Python Script\" />\n      </list>\n    </option>\n  </component>\n  <component name=\"Git.Settings\">\n    <option name=\"RECENT_GIT_ROOT_PATH\" value=\"$PROJECT_DIR$\" />\n  </component>\n  <component name=\"ProjectColorInfo\">{\n  &quot;associatedIndex&quot;: 8\n}</component>\n  <component name=\"ProjectId\" id=\"310fjPSmW2GRiw8FmFeECD4gGs8\" />\n  <component name=\"ProjectLevelVcsManager\">\n    <ConfirmationsSetting value=\"2\" id=\"Add\" />\n  </component>\n  <component name=\"ProjectViewState\">\n    <option name=\"hideEmptyMiddlePackages\" value=\"true\" />\n    <option name=\"showLibraryContents\" value=\"true\" />\n  </component>\n  <component name=\"PropertiesComponent\"><![CDATA[{\n  \"keyToString\": {\n    \"ASKED_MARK_IGNORED_FILES_AS_EXCLUDED\": \"true\",\n    \"ModuleVcsDetector.initialDetectionPerformed\": \"true\",\n    \"RunOnceActivity.ShowReadmeOnStart\": \"true\",\n    \"RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager\": \"true\",\n    \"RunOnceActivity.git.unshallow\": \"true\",\n    \"git-widget-placeholder\": \"master\",\n    \"last_opened_file_path\": \"/Users/pengfei.shi/workspace/youtube/story_generator\"\n  }\n}]]></component>\n  <component name=\"RecentsManager\">\n    <key name=\"MoveFile.RECENT_KEYS\">\n      <recent name=\"$PROJECT_DIR$/output/images\" />\n      <recent name=\"$PROJECT_DIR$/draft_gen\" />\n      <recent name=\"$PROJECT_DIR$/voice_gen\" />\n    </key>\n  </component>\n  <component name=\"SharedIndexes\">\n    <attachedChunks>\n      <set>\n        <option value=\"bundled-python-sdk-9f8e2b94138c-36ea0e71a18c-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-251.26094.141\" />\n      </set>\n    </attachedChunks>\n  </component>\n  <component name=\"TaskManager\">\n    <task active=\"true\" id=\"Default\" summary=\"默认任务\">\n      <changelist id=\"b06674bc-41ad-4cbf-b795-3fc27c1ebd5f\" name=\"更改\" comment=\"\" />\n      <created>1754666044458</created>\n      <option name=\"number\" value=\"Default\" />\n      <option name=\"presentableId\" value=\"Default\" />\n      <updated>1754666044458</updated>\n    </task>\n    <task id=\"LOCAL-00001\" summary=\"x\">\n      <option name=\"closed\" value=\"true\" />\n      <created>1754667966929</created>\n      <option name=\"number\" value=\"00001\" />\n      <option name=\"presentableId\" value=\"LOCAL-00001\" />\n      <option name=\"project\" value=\"LOCAL\" />\n      <updated>1754667966929</updated>\n    </task>\n    <option name=\"localTasksCounter\" value=\"2\" />\n    <servers />\n  </component>\n  <component name=\"VcsManagerConfiguration\">\n    <MESSAGE value=\"x\" />\n    <option name=\"LAST_COMMIT_MESSAGE\" value=\"x\" />\n  </component>\n</project>
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/workspace.xml b/.idea/workspace.xml
+--- a/.idea/workspace.xml	(revision c2ba01a8b402431c4e3f32d6d1684a5c64e7b225)
++++ b/.idea/workspace.xml	(date 1755701645635)
+@@ -5,48 +5,10 @@
+   </component>
+   <component name="ChangeListManager">
+     <list default="true" id="b06674bc-41ad-4cbf-b795-3fc27c1ebd5f" name="更改" comment="x">
+-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/.idea/story_generator.iml" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/batch_metadata_extractor.py" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/docs/metadata_extractor_usage.md" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/docs/story_creator_v3_usage.md" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/docs/video_generate.md" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/draft_gen/draft_meta_info.json" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/draft_gen/draft_settings" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/draft_gen/generateDraftService.py" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/draft_gen/models/__init__.py" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/draft_gen/models/draft_effects_library.py" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/draft_gen/models/draft_models.py" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/draft_gen/models/draft_templates.py" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/prompts/channel_generator.md" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/prompts/dna_extractor2.md" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/prompts/fra,ewprl+gemeratev2.md" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/prompts/framework_generatorv3.md" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/prompts/story_generation_ascii.md" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/test_v3.py" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/video_list_example.txt" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/voice_gen/async_tts_client.py" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/voice_gen/tts_client.py" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/youtube_metadata_extractor.py" afterDir="false" />
+-      <change afterPath="$PROJECT_DIR$/youtube_story_creator_v3.py" afterDir="false" />
+-      <change beforePath="$PROJECT_DIR$/.env" beforeDir="false" afterPath="$PROJECT_DIR$/.env" afterDir="false" />
+-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+-      <change beforePath="$PROJECT_DIR$/.idea/shelf/在变基之前未提交的更改_[更改]/shelved.patch" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+-      <change beforePath="$PROJECT_DIR$/gemini_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/gemini_client.py" afterDir="false" />
+-      <change beforePath="$PROJECT_DIR$/prompts/segment_generator.md" beforeDir="false" afterPath="$PROJECT_DIR$/prompts/segment_generator.md" afterDir="false" />
+-      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
+-      <change beforePath="$PROJECT_DIR$/test_debug_logging.py" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/test_image_generation_v2.py" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/test_image_prompt_generator.py" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/test_jimeng_generator.py" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/test_simple_generation.py" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/test_three_step_flow.py" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/text_processor.py" beforeDir="false" afterPath="$PROJECT_DIR$/text_processor.py" afterDir="false" />
+-      <change beforePath="$PROJECT_DIR$/tts_client.py" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/youtube_story_creator_v2.py" beforeDir="false" afterPath="$PROJECT_DIR$/youtube_story_creator_v2.py" afterDir="false" />
++      <change afterPath="$PROJECT_DIR$/draft_gen/templates/keyf_content.json" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/.idea/shelf/___.xml" beforeDir="false" />
++      <change beforePath="$PROJECT_DIR$/pipeline_steps_v3.py" beforeDir="false" afterPath="$PROJECT_DIR$/pipeline_steps_v3.py" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/voice_gen/tts_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/voice_gen/tts_client.py" afterDir="false" />
+     </list>
+     <option name="SHOW_DIALOG" value="false" />
+     <option name="HIGHLIGHT_CONFLICTS" value="true" />
+@@ -115,7 +77,15 @@
+       <option name="project" value="LOCAL" />
+       <updated>1754667966929</updated>
+     </task>
+-    <option name="localTasksCounter" value="2" />
++    <task id="LOCAL-00002" summary="x">
++      <option name="closed" value="true" />
++      <created>1755445220807</created>
++      <option name="number" value="00002" />
++      <option name="presentableId" value="LOCAL-00002" />
++      <option name="project" value="LOCAL" />
++      <updated>1755445220807</updated>
++    </task>
++    <option name="localTasksCounter" value="3" />
+     <servers />
+   </component>
+   <component name="VcsManagerConfiguration">
+Index: draft_gen/templates/keyf_content.json
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/draft_gen/templates/keyf_content.json b/draft_gen/templates/keyf_content.json
+new file mode 100644
+--- /dev/null	(date 1755683024833)
++++ b/draft_gen/templates/keyf_content.json	(date 1755683024833)
+@@ -0,0 +1,1 @@
++{"canvas_config":{"height":1080,"ratio":"16:9","width":1920},"color_space":0,"config":{"adjust_max_index":1,"attachment_info":[],"combination_max_index":1,"export_range":null,"extract_audio_last_index":1,"lyrics_recognition_id":"","lyrics_sync":true,"lyrics_taskinfo":[],"maintrack_adsorb":true,"material_save_mode":0,"multi_language_current":"none","multi_language_list":[],"multi_language_main":"none","multi_language_mode":"none","original_sound_last_index":1,"record_audio_last_index":1,"sticker_max_index":1,"subtitle_keywords_config":null,"subtitle_recognition_id":"","subtitle_sync":true,"subtitle_taskinfo":[],"system_font_list":[],"video_mute":false,"zoom_info_params":null},"cover":null,"create_time":0,"duration":10000000,"extra_info":null,"fps":30.0,"free_render_index_mode_on":false,"group_container":null,"id":"60485FB6-7C83-4885-BB12-BC802F44CD1F","keyframe_graph_list":[],"keyframes":{"adjusts":[],"audios":[],"effects":[],"filters":[],"handwrites":[],"stickers":[],"texts":[],"videos":[]},"last_modified_platform":{"app_id":3704,"app_source":"lv","app_version":"5.9.0","device_id":"d4d9c34f9062e2e30ab6e7581b8eee4d","hard_disk_id":"","mac_address":"c965a276aebf8dbc7d0ed20374348db6,2e26562dc4bb751e9fa4a35198fca8c3","os":"windows","os_version":"10.0.26100"},"materials":{"ai_translates":[],"audio_balances":[],"audio_effects":[],"audio_fades":[],"audio_track_indexes":[],"audios":[],"beats":[],"canvases":[{"album_image":"","blur":0.0,"color":"","id":"6EA4131A-3B40-4ff2-85F6-0B72A8D1F34E","image":"","image_id":"","image_name":"","source_platform":0,"team_id":"","type":"canvas_color"},{"album_image":"","blur":0.0,"color":"","id":"AD048241-5A18-42ab-87A6-461EB9295D9A","image":"","image_id":"","image_name":"","source_platform":0,"team_id":"","type":"canvas_color"}],"chromas":[],"color_curves":[],"digital_humans":[],"drafts":[],"effects":[],"flowers":[],"green_screens":[],"handwrites":[],"hsl":[],"images":[],"log_color_wheels":[],"loudnesses":[],"manual_deformations":[],"masks":[],"material_animations":[],"material_colors":[],"multi_language_refs":[],"placeholders":[],"plugin_effects":[],"primary_color_wheels":[],"realtime_denoises":[],"shapes":[],"smart_crops":[],"smart_relights":[],"sound_channel_mappings":[{"audio_channel_mapping":0,"id":"0D0FDDB6-FFA0-4a19-8545-4EBF1137F07E","is_config_open":false,"type":""},{"audio_channel_mapping":0,"id":"C2612C40-FDF6-4eae-92DF-33385910F98C","is_config_open":false,"type":""}],"speeds":[{"curve_speed":null,"id":"FC209DF7-13C7-4e68-A612-677FAE89BD50","mode":0,"speed":1.0,"type":"speed"},{"curve_speed":null,"id":"027C9C53-C2F0-4182-9474-FC95EBF38A93","mode":0,"speed":1.0,"type":"speed"}],"stickers":[],"tail_leaders":[],"text_templates":[],"texts":[],"time_marks":[],"transitions":[],"video_effects":[],"video_trackings":[],"videos":[{"aigc_type":"none","audio_fade":null,"cartoon_path":"","category_id":"","category_name":"local","check_flag":63487,"crop":{"lower_left_x":0.0,"lower_left_y":1.0,"lower_right_x":1.0,"lower_right_y":1.0,"upper_left_x":0.0,"upper_left_y":0.0,"upper_right_x":1.0,"upper_right_y":0.0},"crop_ratio":"free","crop_scale":1.0,"duration":10800000000,"extra_type_option":0,"formula_id":"","freeze":null,"has_audio":false,"height":768,"id":"0A4E02DA-064A-4ef3-B826-BE92218872C2","intensifies_audio_path":"","intensifies_path":"","is_ai_generate_content":false,"is_copyright":false,"is_text_edit_overdub":false,"is_unified_beauty_mode":false,"local_id":"","local_material_id":"","material_id":"","material_name":"2loras_test__00014_.png","material_url":"","matting":{"flag":0,"has_use_quick_brush":false,"has_use_quick_eraser":false,"interactiveTime":[],"path":"","strokes":[]},"media_path":"","object_locked":null,"origin_material_id":"","path":"D:/soft/confyui/output/2loras_test__00014_.png","picture_from":"none","picture_set_category_id":"","picture_set_category_name":"","request_id":"","reverse_intensifies_path":"","reverse_path":"","smart_motion":null,"source":0,"source_platform":0,"stable":{"matrix_path":"","stable_level":0,"time_range":{"duration":0,"start":0}},"team_id":"","type":"photo","video_algorithm":{"algorithms":[],"complement_frame_config":null,"deflicker":null,"gameplay_configs":[],"motion_blur_config":null,"noise_reduction":null,"path":"","quality_enhance":null,"time_range":null},"width":768},{"aigc_type":"none","audio_fade":null,"cartoon_path":"","category_id":"","category_name":"local","check_flag":63487,"crop":{"lower_left_x":0.0,"lower_left_y":1.0,"lower_right_x":1.0,"lower_right_y":1.0,"upper_left_x":0.0,"upper_left_y":0.0,"upper_right_x":1.0,"upper_right_y":0.0},"crop_ratio":"free","crop_scale":1.0,"duration":10800000000,"extra_type_option":0,"formula_id":"","freeze":null,"has_audio":false,"height":768,"id":"57DF79BE-2F50-44ab-ADAA-D6180992717E","intensifies_audio_path":"","intensifies_path":"","is_ai_generate_content":false,"is_copyright":false,"is_text_edit_overdub":false,"is_unified_beauty_mode":false,"local_id":"","local_material_id":"","material_id":"","material_name":"2loras_test__00013_.png","material_url":"","matting":{"flag":0,"has_use_quick_brush":false,"has_use_quick_eraser":false,"interactiveTime":[],"path":"","strokes":[]},"media_path":"","object_locked":null,"origin_material_id":"","path":"D:/soft/confyui/output/2loras_test__00013_.png","picture_from":"none","picture_set_category_id":"","picture_set_category_name":"","request_id":"","reverse_intensifies_path":"","reverse_path":"","smart_motion":null,"source":0,"source_platform":0,"stable":{"matrix_path":"","stable_level":0,"time_range":{"duration":0,"start":0}},"team_id":"","type":"photo","video_algorithm":{"algorithms":[],"complement_frame_config":null,"deflicker":null,"gameplay_configs":[],"motion_blur_config":null,"noise_reduction":null,"path":"","quality_enhance":null,"time_range":null},"width":768}],"vocal_beautifys":[],"vocal_separations":[{"choice":0,"id":"F86DB8B7-A8F8-44dd-AB63-8A4113CB2945","production_path":"","time_range":null,"type":"vocal_separation"},{"choice":0,"id":"ED653F76-2389-49b3-A552-A47534D7AEC9","production_path":"","time_range":null,"type":"vocal_separation"}]},"mutable_config":null,"name":"","new_version":"110.0.0","platform":{"app_id":3704,"app_source":"lv","app_version":"5.9.0","device_id":"d4d9c34f9062e2e30ab6e7581b8eee4d","hard_disk_id":"","mac_address":"c965a276aebf8dbc7d0ed20374348db6,2e26562dc4bb751e9fa4a35198fca8c3","os":"windows","os_version":"10.0.26100"},"relationships":[],"render_index_track_mode_on":true,"retouch_cover":null,"source":"default","static_cover_image_path":"","time_marks":null,"tracks":[{"attribute":0,"flag":0,"id":"6808D55E-282B-4056-A2DB-9F3A7A8D7955","is_default_name":true,"name":"","segments":[{"caption_info":null,"cartoon":false,"clip":{"alpha":1.0,"flip":{"horizontal":false,"vertical":false},"rotation":0.0,"scale":{"x":1.8031761006289309,"y":1.8031761006289309},"transform":{"x":0.0,"y":-0.8031761006289309}},"common_keyframes":[{"id":"1641D11A-F24B-47f6-B3BC-37B5272C8B83","keyframe_list":[{"curveType":"Line","graphID":"","id":"E9158C61-437B-4600-BBA1-D4EAEB04B58D","left_control":{"x":0.0,"y":0.0},"right_control":{"x":0.0,"y":0.0},"time_offset":0,"values":[0.0]},{"curveType":"Line","graphID":"","id":"20BB47E0-73CD-425c-91E2-FE6937FF701B","left_control":{"x":0.0,"y":0.0},"right_control":{"x":0.0,"y":0.0},"time_offset":4933333,"values":[0.0]}],"material_id":"","property_type":"KFTypePositionX"},{"id":"13BAF031-3FEC-4c7e-8647-BB4A4BFD193A","keyframe_list":[{"curveType":"Line","graphID":"","id":"601381FA-5C8D-4c28-A52C-A40FE263EECB","left_control":{"x":0.0,"y":0.0},"right_control":{"x":0.0,"y":0.0},"time_offset":0,"values":[0.8031761006289309]},{"curveType":"Line","graphID":"","id":"2E9F5E07-7D65-4075-990E-BE4906595063","left_control":{"x":0.0,"y":0.0},"right_control":{"x":0.0,"y":0.0},"time_offset":4933333,"values":[-0.8031761006289309]}],"material_id":"","property_type":"KFTypePositionY"},{"id":"36F3AF14-0387-42c8-86E9-E0BC52ACFC08","keyframe_list":[{"curveType":"Line","graphID":"","id":"15964DFD-979D-4d40-9855-2B38CF0AD6A9","left_control":{"x":0.0,"y":0.0},"right_control":{"x":0.0,"y":0.0},"time_offset":0,"values":[1.8031761006289309]},{"curveType":"Line","graphID":"","id":"BD8F18C7-1B03-4ee8-85B0-5E4A2AF6BBDF","left_control":{"x":0.0,"y":0.0},"right_control":{"x":0.0,"y":0.0},"time_offset":4933333,"values":[1.8031761006289309]}],"material_id":"","property_type":"KFTypeScaleX"},{"id":"84D2FD29-DC3D-4455-B65E-762F62B896D2","keyframe_list":[{"curveType":"Line","graphID":"","id":"9B4F8517-9649-42a9-8101-1A3C66C3AE32","left_control":{"x":0.0,"y":0.0},"right_control":{"x":0.0,"y":0.0},"time_offset":0,"values":[0.0]},{"curveType":"Line","graphID":"","id":"612BECED-1291-4bf6-BEE5-D82D1A6DD625","left_control":{"x":0.0,"y":0.0},"right_control":{"x":0.0,"y":0.0},"time_offset":4933333,"values":[0.0]}],"material_id":"","property_type":"KFTypeRotation"}],"enable_adjust":true,"enable_color_correct_adjust":false,"enable_color_curves":true,"enable_color_match_adjust":false,"enable_color_wheels":true,"enable_lut":true,"enable_smart_color_adjust":false,"extra_material_refs":["FC209DF7-13C7-4e68-A612-677FAE89BD50","6EA4131A-3B40-4ff2-85F6-0B72A8D1F34E","0D0FDDB6-FFA0-4a19-8545-4EBF1137F07E","F86DB8B7-A8F8-44dd-AB63-8A4113CB2945"],"group_id":"","hdr_settings":{"intensity":1.0,"mode":1,"nits":1000},"id":"3988D340-BDBE-46fe-AA95-9A3E99C2D75B","intensifies_audio":false,"is_placeholder":false,"is_tone_modify":false,"keyframe_refs":[],"last_nonzero_volume":1.0,"material_id":"0A4E02DA-064A-4ef3-B826-BE92218872C2","render_index":0,"responsive_layout":{"enable":false,"horizontal_pos_layout":0,"size_layout":0,"target_follow":"","vertical_pos_layout":0},"reverse":false,"source_timerange":{"duration":5000000,"start":0},"speed":1.0,"target_timerange":{"duration":5000000,"start":0},"template_id":"","template_scene":"default","track_attribute":0,"track_render_index":0,"uniform_scale":{"on":true,"value":1.0},"visible":true,"volume":1.0},{"caption_info":null,"cartoon":false,"clip":{"alpha":1.0,"flip":{"horizontal":false,"vertical":false},"rotation":0.0,"scale":{"x":1.8,"y":1.8},"transform":{"x":0.0,"y":0.8}},"common_keyframes":[{"id":"6CFB0CD9-BAF5-4d99-BE85-9EA4B60E5A5E","keyframe_list":[{"curveType":"Line","graphID":"","id":"1EE0486B-4FBD-4e80-8ECF-0729FA13633F","left_control":{"x":0.0,"y":0.0},"right_control":{"x":0.0,"y":0.0},"time_offset":0,"values":[0.0]},{"curveType":"Line","graphID":"","id":"C2BA0DB9-E84A-4837-942B-84312AC1D6B0","left_control":{"x":0.0,"y":0.0},"right_control":{"x":0.0,"y":0.0},"time_offset":5000000,"values":[0.0]}],"material_id":"","property_type":"KFTypePositionX"},{"id":"6FCC12F0-31B1-4580-BA5B-3283CC883A7F","keyframe_list":[{"curveType":"Line","graphID":"","id":"7D03D3F4-D10F-4a9c-BCF1-EAD7D14477F9","left_control":{"x":0.0,"y":0.0},"right_control":{"x":0.0,"y":0.0},"time_offset":0,"values":[-0.8]},{"curveType":"Line","graphID":"","id":"637AA4C0-0D7A-4dfd-9102-A21423A17F3D","left_control":{"x":0.0,"y":0.0},"right_control":{"x":0.0,"y":0.0},"time_offset":5000000,"values":[0.8]}],"material_id":"","property_type":"KFTypePositionY"},{"id":"EEE7F21B-40A0-4e66-8ABD-C969B1D03D62","keyframe_list":[{"curveType":"Line","graphID":"","id":"59257BC4-C0C0-489b-A9E3-0E039B999E11","left_control":{"x":0.0,"y":0.0},"right_control":{"x":0.0,"y":0.0},"time_offset":0,"values":[1.8]},{"curveType":"Line","graphID":"","id":"3A0F8969-7564-4aa0-9ACC-CA504811D3D2","left_control":{"x":0.0,"y":0.0},"right_control":{"x":0.0,"y":0.0},"time_offset":5000000,"values":[1.8]}],"material_id":"","property_type":"KFTypeScaleX"},{"id":"15BD0DDE-F8A7-48af-B34B-F782BCA8648E","keyframe_list":[{"curveType":"Line","graphID":"","id":"DF84E7D2-C373-4188-984E-53AD6F9B48DD","left_control":{"x":0.0,"y":0.0},"right_control":{"x":0.0,"y":0.0},"time_offset":0,"values":[0.0]},{"curveType":"Line","graphID":"","id":"B4DC3D01-8D2D-4b3a-9848-B99B6A51F749","left_control":{"x":0.0,"y":0.0},"right_control":{"x":0.0,"y":0.0},"time_offset":5000000,"values":[0.0]}],"material_id":"","property_type":"KFTypeRotation"}],"enable_adjust":true,"enable_color_correct_adjust":false,"enable_color_curves":true,"enable_color_match_adjust":false,"enable_color_wheels":true,"enable_lut":true,"enable_smart_color_adjust":false,"extra_material_refs":["027C9C53-C2F0-4182-9474-FC95EBF38A93","AD048241-5A18-42ab-87A6-461EB9295D9A","C2612C40-FDF6-4eae-92DF-33385910F98C","ED653F76-2389-49b3-A552-A47534D7AEC9"],"group_id":"","hdr_settings":{"intensity":1.0,"mode":1,"nits":1000},"id":"EA1A6D45-E465-406f-9898-DC2EF5F457AA","intensifies_audio":false,"is_placeholder":false,"is_tone_modify":false,"keyframe_refs":[],"last_nonzero_volume":1.0,"material_id":"57DF79BE-2F50-44ab-ADAA-D6180992717E","render_index":0,"responsive_layout":{"enable":false,"horizontal_pos_layout":0,"size_layout":0,"target_follow":"","vertical_pos_layout":0},"reverse":false,"source_timerange":{"duration":5000000,"start":0},"speed":1.0,"target_timerange":{"duration":5000000,"start":5000000},"template_id":"","template_scene":"default","track_attribute":0,"track_render_index":0,"uniform_scale":{"on":true,"value":1.0},"visible":true,"volume":1.0}],"type":"video"}],"update_time":0,"version":360000}

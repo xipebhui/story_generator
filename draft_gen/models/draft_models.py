@@ -28,6 +28,46 @@ class Clip:
 
 
 @dataclass
+class Keyframe:
+    """关键帧数据"""
+    id: str
+    time_offset: int  # 时间偏移（微秒）
+    values: List[float]  # 属性值
+    curveType: str = "Line"  # 曲线类型
+    graphID: str = ""
+    left_control: Dict[str, float] = field(default_factory=lambda: {"x": 0.0, "y": 0.0})
+    right_control: Dict[str, float] = field(default_factory=lambda: {"x": 0.0, "y": 0.0})
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "time_offset": self.time_offset,
+            "values": self.values,
+            "curveType": self.curveType,
+            "graphID": self.graphID,
+            "left_control": self.left_control,
+            "right_control": self.right_control
+        }
+
+
+@dataclass
+class CommonKeyframe:
+    """通用关键帧容器"""
+    id: str
+    property_type: str  # KFTypePositionX, KFTypePositionY, KFTypeScaleX, KFTypeRotation等
+    keyframe_list: List[Keyframe]
+    material_id: str = ""
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "property_type": self.property_type,
+            "keyframe_list": [kf.to_dict() for kf in self.keyframe_list],
+            "material_id": self.material_id
+        }
+
+
+@dataclass
 class Segment:
     id: str
     material_id: str
@@ -37,6 +77,7 @@ class Segment:
     volume: float = 1.0
     clip: Optional[Clip] = None  # 允许为None，音频segment不需要clip
     extra_refs: List[str] = field(default_factory=list)
+    common_keyframes: List[CommonKeyframe] = field(default_factory=list)  # 添加关键帧支持
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
@@ -50,7 +91,7 @@ class Segment:
             "reverse": False,
             "template_id": "",
             "template_scene": "default",
-            "common_keyframes": [],
+            "common_keyframes": [kf.to_dict() for kf in self.common_keyframes],
             "keyframe_refs": [],
             "visible": True,
             "is_placeholder": False,

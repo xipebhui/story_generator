@@ -518,18 +518,18 @@ class YouTubeAPIClient:
             absolute_path = os.path.abspath(relative_path)
             
             # 确保目录存在
-            os.makedirs(os.path.dirname(absolute_path), exist_ok=True)
+            # os.makedirs(os.path.dirname(absolute_path), exist_ok=True)
             
             # 写入文件
-            with open(absolute_path, 'w', encoding='utf-8') as f:
-                f.write(subtitle_text)
+            # with open(absolute_path, 'w', encoding='utf-8') as f:
+            #    f.write(subtitle_text)
             
             # 打印前100个字符
             preview = subtitle_text[:100] + "..." if len(subtitle_text) > 100 else subtitle_text
             self.logger.info(f"📄 字幕预览: {preview}")
             self.logger.info(f"✅ 字幕保存成功: {relative_path}")
             
-            return relative_path, subtitle_text
+            return relative_path
             
         except TranscriptsDisabled as e: 
             raise e 
