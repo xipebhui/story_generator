@@ -484,7 +484,7 @@ class VideoPipeline:
         
         logger.debug(f"语音生成参数: cid={self.request.creator_id}, vid={self.request.video_id}, gender={gender_value}")
         
-        result = self._run_command(command, "语音生成", timeout=300)
+        result = self._run_command(command, "语音生成", timeout=900)
         
         # 记录生成的文件（语音生成脚本输出到./output/目录）
         if result.status == StageStatus.SUCCESS:

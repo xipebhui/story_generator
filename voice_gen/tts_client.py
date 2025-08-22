@@ -72,7 +72,8 @@ class TTSClient:
         """
         try:
             # 调用服务生成语音
-            result = self.service.generate(text, voice, pitch, volume, rate)
+            # 批量处理时强制使用异步接口，避免同步接口的限制
+            result = self.service.generate(text, voice, pitch, volume, rate, force_async=True)
             
             if not result.get('success'):
                 raise Exception("生成失败")
@@ -156,7 +157,8 @@ class TTSClient:
             print(f"正在生成语音 (行号: {line_num}): {text[:50]}...")
             
             # 调用服务生成语音
-            result = self.service.generate(text, voice, pitch, volume, rate)
+            # 批量处理时强制使用异步接口，避免同步接口的限制
+            result = self.service.generate(text, voice, pitch, volume, rate, force_async=True)
             
             if not result.get('success'):
                 raise Exception("生成失败")
@@ -195,6 +197,10 @@ class TTSClient:
             
         except Exception as e:
             logger.error(f"生成语音失败（行号: {line_num}）: {e}")
+            logger.error(f"错误类型: {type(e).__name__}")
+            logger.error(f"TTS服务返回: {result if 'result' in locals() else 'No result'}")
+            import traceback
+            logger.error(f"完整错误栈:\n{traceback.format_exc()}")
             raise Exception(f"生成语音失败（行号: {line_num}）: {e}")
     
     def generate_story_audio(self, c_id: str, v_id: str, gender: str) -> dict:
@@ -324,17 +330,82 @@ class TTSClient:
         if not audio_files:
             raise Exception("没有生成任何音频文件")
         
-        print("开始合并音频文件...")
-        combined = AudioSegment.empty()
+        logger.info(f"开始合并 {len(audio_files)} 个音频文件...")
+        print(f"开始合并 {len(audio_files)} 个音频文件...")
         
-        for audio_file in audio_files:
-            audio = AudioSegment.from_mp3(audio_file)
-            audio_durations.append(len(audio))  # 记录每个音频的时长（毫秒）
-            combined += audio
+        # 分批合并，避免内存占用过大
+        batch_size = 5  # 减小批次大小，每批合并5个文件
+        temp_files = []
+        total_batches = (len(audio_files) + batch_size - 1) // batch_size
+        
+        for batch_idx, i in enumerate(range(0, len(audio_files), batch_size)):
+            batch_files = audio_files[i:i+batch_size]
+            current_batch = batch_idx + 1
+            logger.info(f"合并批次 {current_batch}/{total_batches} (文件 {i+1}-{min(i+batch_size, len(audio_files))})")
+            print(f"合并进度: {current_batch}/{total_batches} 批次")
+            
+            # 合并当前批次
+            batch_combined = AudioSegment.empty()
+            for j, audio_file in enumerate(batch_files):
+                try:
+                    logger.debug(f"  加载文件 {j+1}/{len(batch_files)}: {audio_file}")
+                    audio = AudioSegment.from_mp3(audio_file)
+                    audio_durations.append(len(audio))  # 记录每个音频的时长（毫秒）
+                    batch_combined += audio
+                    # 释放单个音频占用的内存
+                    del audio
+                except Exception as e:
+                    logger.error(f"加载音频文件失败 {audio_file}: {e}")
+                    continue
+            
+            # 保存批次结果
+            if len(batch_combined) > 0:
+                temp_file = os.path.join(tmp_dir, f"batch_{batch_idx:03d}.mp3")
+                logger.debug(f"  保存批次文件: {temp_file}")
+                batch_combined.export(temp_file, format="mp3", bitrate="128k")  # 指定比特率
+                temp_files.append(temp_file)
+                logger.info(f"批次 {current_batch} 合并完成，临时文件: {temp_file}")
+                # 释放批次音频占用的内存
+                del batch_combined
+            else:
+                logger.warning(f"批次 {current_batch} 没有有效音频")
+        
+        # 最终合并所有批次
+        logger.info(f"开始最终合并 {len(temp_files)} 个批次文件...")
+        print(f"最终合并: {len(temp_files)} 个批次文件")
+        
+        combined = AudioSegment.empty()
+        for idx, temp_file in enumerate(temp_files, 1):
+            logger.info(f"合并批次文件 {idx}/{len(temp_files)}: {temp_file}")
+            try:
+                audio = AudioSegment.from_mp3(temp_file)
+                combined += audio
+                # 释放内存
+                del audio
+                # 删除临时批次文件
+                os.unlink(temp_file)
+                logger.debug(f"已删除临时文件: {temp_file}")
+            except Exception as e:
+                logger.error(f"合并批次文件失败 {temp_file}: {e}")
+                continue
         
         # 保存合并后的音频
         output_path = f"./output/{c_id}_{v_id}_story.mp3"
-        combined.export(output_path, format="mp3")
+        logger.info(f"正在保存最终音频文件: {output_path}")
+        print(f"保存最终音频: {output_path}")
+        
+        # 确保输出目录存在
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        
+        # 导出最终音频，使用合理的比特率
+        combined.export(output_path, format="mp3", bitrate="128k")
+        logger.info(f"✅ 音频合并完成: {output_path}")
+        
+        # 获取音频信息
+        total_duration = len(combined) / 1000.0  # 转换为秒
+        file_size = os.path.getsize(output_path)
+        logger.info(f"音频总时长: {total_duration:.2f} 秒")
+        logger.info(f"文件大小: {file_size:,} 字节 ({file_size/1024/1024:.2f} MB)")
         
         print(f"音频合并完成: {output_path}")
         

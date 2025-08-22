@@ -4,44 +4,21 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="b06674bc-41ad-4cbf-b795-3fc27c1ebd5f" name="更改" comment="x">
-      <change afterPath="$PROJECT_DIR$/.idea/shelf/在进行更新之前于_2025_8_20_22_54_取消提交了更改_[更改]/shelved.patch" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/draft_gen/jianying_draft_generator.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/draft_gen/jianying_subtitle_service.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/draft_gen/srt_draft_content.json" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/draft_gen/srt_to_jianying_subtitle.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/draft_gen/templates/keyf_content.json" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/draft_gen/test_t54eELXWe4g_story.mp3" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/draft_gen/test_t54eELXWe4g_story_draft.json" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/draft_gen/test_t54eELXWe4g_story_jianying.json" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/output.mp3" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/outputs/test/test_video/story.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/outputs/test/test_video/story_original.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/outputs/test/test_video/story_processed.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/pipeline_api.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/pipeline_core.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/test_batch_tts.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/test_preprocess.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/test_real_preprocess.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/unified_pipeline.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/voice_gen/BATCH_TTS_UPDATE.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/voice_gen/test_tts_client.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/voice_gen/tts_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.claude/settings.local.json" beforeDir="false" afterPath="$PROJECT_DIR$/.claude/settings.local.json" afterDir="false" />
+    <list default="true" id="b06674bc-41ad-4cbf-b795-3fc27c1ebd5f" name="更改" comment="完成脚本创作">
       <change beforePath="$PROJECT_DIR$/.env" beforeDir="false" afterPath="$PROJECT_DIR$/.env" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/shelf/___.xml" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/draft_gen/generateDraftService.py" beforeDir="false" afterPath="$PROJECT_DIR$/draft_gen/generateDraftService.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/draft_gen/models/draft_models.py" beforeDir="false" afterPath="$PROJECT_DIR$/draft_gen/models/draft_models.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/generate_youtube_metadata_standalone.py" beforeDir="false" afterPath="$PROJECT_DIR$/generate_youtube_metadata_standalone.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pipeline_steps_v3.py" beforeDir="false" afterPath="$PROJECT_DIR$/pipeline_steps_v3.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pipeline_core.py" beforeDir="false" afterPath="$PROJECT_DIR$/pipeline_core.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/prompts/dna_extractor.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/prompts/dna_extractor2.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/prompts/jimeng_prompt_generator.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/prompts/scene_extractor.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/prompts/sd_image_generator.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/prompts/sd_image_generator_v2.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/prompts/sd_prompt_generator.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/prompts/story_compare.md" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/prompts/story_header.md" beforeDir="false" afterPath="$PROJECT_DIR$/prompts/story_header.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/test_prompt_fix.py" beforeDir="false" afterPath="$PROJECT_DIR$/test_prompt_fix.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/test_youtube_debug.py" beforeDir="false" afterPath="$PROJECT_DIR$/test_youtube_debug.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/test_youtube_metadata.py" beforeDir="false" afterPath="$PROJECT_DIR$/test_youtube_metadata.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/test_youtube_simple.py" beforeDir="false" afterPath="$PROJECT_DIR$/test_youtube_simple.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/voice_gen/tts_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/voice_gen/tts_client.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voice_gen/tts_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/voice_gen/tts_service.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -120,11 +97,28 @@
       <option name="project" value="LOCAL" />
       <updated>1755445220807</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="完成脚本创作">
+      <option name="closed" value="true" />
+      <created>1755858763109</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1755858763109</updated>
+    </task>
+    <task id="LOCAL-00004" summary="完成脚本创作">
+      <option name="closed" value="true" />
+      <created>1755879109122</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1755879109122</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="x" />
-    <option name="LAST_COMMIT_MESSAGE" value="x" />
+    <MESSAGE value="完成脚本创作" />
+    <option name="LAST_COMMIT_MESSAGE" value="完成脚本创作" />
   </component>
 </project>
