@@ -16,6 +16,10 @@ import json
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
+# 加载环境变量配置
+from config_loader import load_env_file
+load_env_file()
+
 from pipeline_architecture import Pipeline, PipelineStep, PromptManager
 from pipeline_context_v3 import PipelineContextV3
 # 分别导入模块，确保所有步骤都被正确加载

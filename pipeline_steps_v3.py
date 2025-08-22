@@ -75,11 +75,15 @@ class FetchYouTubeDataV3Step(PipelineStep):
             
             # 获取字幕（必须成功）
             logger.info("📝 获取视频字幕")
-            result = self.youtube_client.get_video_transcript(context.video_id)
-            if not result:
+            subtitle_path = self.youtube_client.get_video_transcript(context.video_id)
+            if not subtitle_path:
                 raise Exception(f"Failed to fetch transcript for {context.video_id} - TERMINATING")
             
-            _, subtitle_text = result
+            # 读取字幕文件内容
+            import os
+            absolute_path = os.path.abspath(subtitle_path)
+            with open(absolute_path, 'r', encoding='utf-8') as f:
+                subtitle_text = f.read()
             context.subtitles = subtitle_text
             
             # 保存缓存

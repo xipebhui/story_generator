@@ -330,7 +330,7 @@ Ensure:
         格式化润色阶段的输入
 
         Args:
-            framework: 改编框架
+            framework: 改编框架（不再使用，仅保留接口兼容性）
             draft: 故事草稿
             num_segments: 片段数量（默认9个）
 
@@ -339,7 +339,8 @@ Ensure:
         """
         sections = []
 
-        sections.append(TextProcessor.create_section("Adaptation Framework", framework))
+        # 注意：不再传递框架内容，只传递纯故事文本进行润色
+        # sections.append(TextProcessor.create_section("Adaptation Framework", framework))
 
         # 计算草稿字数
         draft_word_count = len(draft)
@@ -357,7 +358,8 @@ Ensure:
   * Check character consistency
   * Ensure plot logic coherence
   * Optimize dialogue naturalness
-- **OUTPUT IN ENGLISH**"""
+- **OUTPUT ONLY THE POLISHED STORY TEXT IN ENGLISH**
+- **DO NOT INCLUDE ANY FRAMEWORK, JSON, OR METADATA**"""
         sections.append(TextProcessor.create_section("Polish Requirements", requirements))
 
         return ''.join(sections)

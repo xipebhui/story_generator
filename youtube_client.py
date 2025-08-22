@@ -439,10 +439,13 @@ class YouTubeAPIClient:
             # }
             
             # 方案2：使用SOCKS5代理（已安装pysocks）
+            # 从环境变量读取SOCKS5代理配置
+            socks5_host = os.getenv('SOCKS5_PROXY_HOST', '127.0.0.1')
+            socks5_port = os.getenv('SOCKS5_PROXY_PORT', '7897')
             # 使用 socks5h:// 来确保DNS解析也通过代理
             proxies = {
-                'http': 'socks5h://127.0.0.1:7897',
-                'https': 'socks5h://127.0.0.1:7897'
+                'http': f'socks5h://{socks5_host}:{socks5_port}',
+                'https': f'socks5h://{socks5_host}:{socks5_port}'
             }
             
             # 临时解决SSL证书验证问题
@@ -470,7 +473,7 @@ class YouTubeAPIClient:
             # 禁用urllib3的SSL警告
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
             
-            self.logger.info(f"🔧 使用SOCKS5代理: 127.0.0.1:7897 (开发环境，SSL验证已禁用)")
+            self.logger.info(f"🔧 使用SOCKS5代理: {socks5_host}:{socks5_port} (开发环境，SSL验证已禁用)")
         
         try:
             # 尝试获取字幕
@@ -518,11 +521,11 @@ class YouTubeAPIClient:
             absolute_path = os.path.abspath(relative_path)
             
             # 确保目录存在
-            # os.makedirs(os.path.dirname(absolute_path), exist_ok=True)
+            os.makedirs(os.path.dirname(absolute_path), exist_ok=True)
             
             # 写入文件
-            # with open(absolute_path, 'w', encoding='utf-8') as f:
-            #    f.write(subtitle_text)
+            with open(absolute_path, 'w', encoding='utf-8') as f:
+                f.write(subtitle_text)
             
             # 打印前100个字符
             preview = subtitle_text[:100] + "..." if len(subtitle_text) > 100 else subtitle_text

@@ -26,8 +26,8 @@ class GeminiClient:
             logger.error("No NEWAPI_API_KEY found in environment variables.")
             raise ValueError("NEWAPI_API_KEY is required to initialize GeminiClient.")
         
-        # 设置基础 URL
-        self.base_url = "http://27.152.58.86:51099"
+        # 从环境变量获取基础 URL，如果没有则使用默认值
+        self.base_url = os.getenv("NEWAPI_BASE_URL", "http://27.152.58.86:51099")
         
         self.model = "gemini-2.5-flash"
         

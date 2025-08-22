@@ -486,9 +486,18 @@ class VideoPipeline:
         
         result = self._run_command(command, "语音生成", timeout=300)
         
-        # 记录生成的文件
-        if result.status == StageStatus.SUCCESS and self.paths['audio'].exists():
-            result.output_files = [str(self.paths['audio'])]
+        # 记录生成的文件（语音生成脚本输出到./output/目录）
+        if result.status == StageStatus.SUCCESS:
+            audio_path = Path(f"./output/{self.request.creator_id}_{self.request.video_id}_story.mp3")
+            srt_path = Path(f"./output/{self.request.creator_id}_{self.request.video_id}_story.srt")
+            output_files = []
+            if audio_path.exists():
+                output_files.append(str(audio_path))
+                # 更新路径引用
+                self.paths['audio'] = audio_path
+            if srt_path.exists():
+                output_files.append(str(srt_path))
+            result.output_files = output_files
         
         return result
     
