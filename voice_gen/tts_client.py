@@ -569,10 +569,12 @@ class TTSClient:
                             new_start = start_time + time_offset
                             new_end = end_time + time_offset
                             
-                            # 处理文本：去除标点符号
+                            # 处理文本：去除标点符号并转换为小写
                             cleaned_text_lines = []
                             for text_line in text_lines:
                                 cleaned_text = self._remove_punctuation(text_line)
+                                # 转换为小写
+                                cleaned_text = cleaned_text.lower()
                                 if cleaned_text.strip():
                                     cleaned_text_lines.append(cleaned_text)
                             

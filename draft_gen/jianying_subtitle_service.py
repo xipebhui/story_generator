@@ -144,8 +144,9 @@ class JianyingSubtitleService:
                             int(time_match.group(8))
                         )
                         
-                        # 提取文本（可能多行）
+                        # 提取文本（可能多行）并转换为小写
                         text = ' '.join(lines[2:]).strip()
+                        text = text.lower()  # 转换为小写
                         
                         subtitles.append({
                             'index': index,
