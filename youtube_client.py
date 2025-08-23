@@ -39,19 +39,22 @@ class YouTubeAPIClient:
         
         sock_host = os.environ.get("PROXY_HOST")
         sock_port = os.environ.get("PROXY_PORT")
-        proxy_username = os.environ.get("YOUTUBE_API_KEY")
+        proxy_username = os.environ.get("PROXY_USERNAME")  # 修正：使用正确的环境变量名
         proxy_password = os.environ.get("PROXY_PASSWORD")
 
         # 正确设置代理信息
         self.proxy_info = None
-        if not sock_host or not sock_port or not proxy_password or not proxy_username:
-            self.logger.error(f"获取env 信息不完整，sock_host = {sock_host} , sock_port = {sock_port} , proxy_username = {proxy_username} ,proxy password = {proxy_password}")
-            self.logger.error("终止服务")
-            os.exit(1)
         if sock_host and sock_port:
-            self.logger.info(f"✅ 代理开始配置: {sock_host}:{sock_port}")
-            if proxy_username and proxy_password:
+            try:
+                sock_port = int(sock_port)  # 转换端口为整数
+            except ValueError:
+                self.logger.error(f"端口号无效: {sock_port}")
+                sock_port = 7897  # 使用默认端口
                 
+            self.logger.info(f"✅ 代理开始配置: {sock_host}:{sock_port}")
+            
+            if proxy_username and proxy_password:
+                # 带认证的代理
                 self.proxy_info = httplib2.ProxyInfo(
                     proxy_type=socks.SOCKS5,
                     proxy_host=sock_host,
@@ -59,17 +62,36 @@ class YouTubeAPIClient:
                     proxy_user=proxy_username,
                     proxy_pass=proxy_password
                 )
-                self.logger.info(f"✅ 代理配置成功: {sock_host}:{sock_port}")
-                self.logger.debug(f"🔐 代理认证: {proxy_username}:{'*' * len(proxy_password)}") 
-        self.proxy_info = None
+                self.logger.info(f"✅ 代理配置成功（带认证）: {sock_host}:{sock_port}")
+                self.logger.debug(f"🔐 代理认证: {proxy_username}:{'*' * len(proxy_password)}")
+            else:
+                # 不带认证的代理
+                self.proxy_info = httplib2.ProxyInfo(
+                    proxy_type=socks.SOCKS5,
+                    proxy_host=sock_host,
+                    proxy_port=sock_port
+                )
+                self.logger.info(f"✅ 代理配置成功（无认证）: {sock_host}:{sock_port}") 
+        else:
+            # 只有在没有配置代理的情况下才设置为None
+            self.proxy_info = None
+            self.logger.info("未配置代理，使用直连")
+        
         # 记录初始化状态
         self.logger.info(f"🚀 YouTubeAPIClient初始化完成")
 
 
     def _get_youtube_service(self) -> Tuple[Any, str]:
-               # 创建服务实例
+        """创建YouTube服务实例"""
         try:
-            http_client = httplib2.Http(proxy_info=self.proxy_info) if self.proxy_info else None
+            # 添加更详细的代理日志
+            if self.proxy_info:
+                self.logger.debug(f"使用代理创建HTTP客户端")
+                http_client = httplib2.Http(proxy_info=self.proxy_info)
+            else:
+                self.logger.debug(f"不使用代理，直连")
+                http_client = None
+                
             service = build('youtube', 'v3', 
                             developerKey=self.api_keys[0], 
                             http=http_client, 
@@ -79,6 +101,11 @@ class YouTubeAPIClient:
         except Exception as e:
             self.logger.error(f"❌ YouTube服务实例创建失败: {e}")
             raise e
+    
+    def _handle_api_error(self, error: Exception) -> None:
+        """处理API错误（简化版本）"""
+        self.logger.error(f"API调用失败: {error}")
+        # 简单记录错误，不做复杂处理
 
 
    
