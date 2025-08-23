@@ -18,6 +18,21 @@ from pathlib import Path
 # 添加项目根目录到Python路径
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+# 导入安全打印函数
+try:
+    from utils import safe_print
+except ImportError:
+    # 如果导入失败，定义一个简单的 safe_print
+    import platform
+    def safe_print(message: str, file=None):
+        if platform.system() == 'Windows':
+            message = message.replace('✅', '[OK]').replace('❌', '[ERROR]').replace('⚠️', '[WARNING]')
+        try:
+            print(message, file=file)
+        except UnicodeEncodeError:
+            message_ascii = message.encode('ascii', 'replace').decode('ascii')
+            print(message_ascii, file=file)
+
 from pydub import AudioSegment
 from models.draft_models import (
     Draft, Track, Segment, VideoMaterial, AudioMaterial, Materials,
@@ -375,7 +390,7 @@ class DraftGeneratorService:
         final_path = local_path if local_path else draft_dir
 
         print(f"\n{'=' * 60}")
-        print(f"✅ 生成完成!")
+        safe_print(f"✅ 生成完成!")
         if local_path:
             print(f"草稿已移动到: {local_path}")
         else:
@@ -945,7 +960,7 @@ def generate_draft_from_story(cid: str, vid: str,
         return draft_dir
         
     except Exception as e:
-        print(f"\n❌ 生成失败: {str(e)}")
+        safe_print(f"\n❌ 生成失败: {str(e)}")
         raise
 
 
@@ -1005,13 +1020,13 @@ def main():
         print("4. 开始编辑你的视频！")
         
     except FileNotFoundError as e:
-        print(f"\n❌ 文件未找到: {str(e)}")
+        safe_print(f"\n❌ 文件未找到: {str(e)}")
         print("\n请确保已经完成以下步骤：")
         print("1. 生成故事音频: python voice_gen/tts_client.py --cid <cid> --vid <vid> --gender <0|1>")
         print("2. 生成图片: python image_generator.py")
         
     except Exception as e:
-        print(f"\n❌ 生成失败: {str(e)}")
+        safe_print(f"\n❌ 生成失败: {str(e)}")
         import traceback
         traceback.print_exc()
 
