@@ -4,9 +4,12 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="b06674bc-41ad-4cbf-b795-3fc27c1ebd5f" name="更改" comment="完成脚本创作">
-      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/youtube_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/youtube_client.py" afterDir="false" />
+    <list default="true" id="b06674bc-41ad-4cbf-b795-3fc27c1ebd5f" name="更改" comment="修复字幕小写">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/draft_gen/jianying_subtitle_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/draft_gen/jianying_subtitle_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/draft_gen/test_t54eELXWe4g_story.mp3" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/draft_gen/test_t54eELXWe4g_story_draft.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/draft_gen/test_t54eELXWe4g_story_jianying.json" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -101,12 +104,81 @@
       <option name="project" value="LOCAL" />
       <updated>1755879109122</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="测试代理">
+      <option name="closed" value="true" />
+      <created>1755938792840</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1755938792840</updated>
+    </task>
+    <task id="LOCAL-00006" summary="修复代理问题">
+      <option name="closed" value="true" />
+      <created>1755939235076</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1755939235076</updated>
+    </task>
+    <task id="LOCAL-00007" summary="修复字符问题">
+      <option name="closed" value="true" />
+      <created>1755940833842</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1755940833842</updated>
+    </task>
+    <task id="LOCAL-00008" summary="修复字符问题">
+      <option name="closed" value="true" />
+      <created>1755945748110</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1755945748110</updated>
+    </task>
+    <task id="LOCAL-00009" summary="修复字幕问题">
+      <option name="closed" value="true" />
+      <created>1755948989347</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1755948989347</updated>
+    </task>
+    <task id="LOCAL-00010" summary="修复字幕问题">
+      <option name="closed" value="true" />
+      <created>1755955699874</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1755955699874</updated>
+    </task>
+    <task id="LOCAL-00011" summary="修复字幕问题">
+      <option name="closed" value="true" />
+      <created>1755957153303</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1755957153303</updated>
+    </task>
+    <task id="LOCAL-00012" summary="修复字幕小写">
+      <option name="closed" value="true" />
+      <created>1755957908219</created>
+      <option name="number" value="00012" />
+      <option name="presentableId" value="LOCAL-00012" />
+      <option name="project" value="LOCAL" />
+      <updated>1755957908219</updated>
+    </task>
+    <option name="localTasksCounter" value="13" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="x" />
     <MESSAGE value="完成脚本创作" />
-    <option name="LAST_COMMIT_MESSAGE" value="完成脚本创作" />
+    <MESSAGE value="测试代理" />
+    <MESSAGE value="修复代理问题" />
+    <MESSAGE value="修复字符问题" />
+    <MESSAGE value="修复字幕问题" />
+    <MESSAGE value="修复字幕小写" />
+    <option name="LAST_COMMIT_MESSAGE" value="修复字幕小写" />
   </component>
 </project>

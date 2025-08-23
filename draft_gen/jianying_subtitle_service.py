@@ -251,7 +251,7 @@ class JianyingSubtitleService:
                 }],
                 "useLetterColor": True
             }],
-            "text": subtitle['text']
+            "text": subtitle['text'].lower()
         }
         
         material = {
