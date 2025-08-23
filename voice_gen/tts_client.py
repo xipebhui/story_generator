@@ -197,7 +197,7 @@ class TTSClient:
             
             safe_print(f"生成成功，音频文件已保存: {audio_path}")
             
-            # 保存字幕文件（如果有）
+            # 保存字幕文件（如果服务返回了字幕）
             srt_path = None
             if result.get('subtitle_text'):
                 srt_filename = f"line_{line_num:04d}.srt"
@@ -205,6 +205,8 @@ class TTSClient:
                 with open(srt_path, 'w', encoding='utf-8') as f:
                     f.write(result['subtitle_text'])
                 safe_print(f"字幕文件已保存: {srt_path}")
+            else:
+                logger.info(f"第 {line_num} 行没有返回字幕数据")
             
             return {
                 'success': True,
@@ -330,7 +332,8 @@ class TTSClient:
                 
                 if result['success']:
                     audio_files.append(result['audio_path'])
-                    if result.get('srt_path'):
+                    # 添加字幕文件（如果存在）
+                    if result.get('srt_path') and os.path.exists(result['srt_path']):
                         srt_files.append(result['srt_path'])
                     else:
                         srt_files.append(None)
@@ -432,9 +435,13 @@ class TTSClient:
         
         # 合并字幕文件
         srt_output_path = None
-        if any(srt_files):
+        if any(srt_files):  # 只有当有非None值时才合并
             srt_output_path = f"./output/{c_id}_{v_id}_story.srt"
-            self._merge_srt_files(srt_files, audio_durations, srt_output_path)
+            merged_srt = self._merge_srt_files(srt_files, audio_durations, srt_output_path)
+            if not merged_srt:
+                srt_output_path = None
+        else:
+            logger.warning("没有任何字幕文件可合并")
         
         # 清理临时文件
         for file in Path(tmp_dir).glob("*.mp3"):

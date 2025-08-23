@@ -231,8 +231,12 @@ class OldTTSService(TTSServiceInterface):
                     # 获取结果数据
                     result = task_info.get('result', {})
                     
-                    # 尝试获取音频文件名并下载
+                    # 获取音频和字幕文件名
                     audio_file = result.get('audio') or result.get('file')
+                    srt_file = result.get('srt')
+                    
+                    # 下载音频文件
+                    audio_data = None
                     if audio_file:
                         # 提取文件名
                         filename = audio_file.split('/')[-1] if '/' in audio_file else audio_file
@@ -241,17 +245,39 @@ class OldTTSService(TTSServiceInterface):
                         
                         audio_response = self.session.get(download_url, timeout=30)
                         if audio_response.status_code == 200:
-                            return {
-                                'success': True,
-                                'audio_data': audio_response.content,
-                                'file_size': len(audio_response.content),
-                                'voice': voice,
-                                'duration': result.get('duration'),
-                                'subtitle_text': result.get('subtitleText'),
-                                'srt': result.get('srt')
-                            }
+                            audio_data = audio_response.content
+                            logger.info(f"音频下载成功，大小: {len(audio_data)} 字节")
                         else:
                             logger.error(f"下载音频失败: {audio_response.status_code}")
+                    
+                    # 下载字幕文件
+                    subtitle_text = None
+                    if srt_file:
+                        # 提取文件名
+                        srt_filename = srt_file.split('/')[-1] if '/' in srt_file else srt_file
+                        srt_download_url = f"{self.base_url}/api/v1/tts/download/{srt_filename}"
+                        logger.info(f"下载字幕: {srt_download_url}")
+                        
+                        srt_response = self.session.get(srt_download_url, timeout=30)
+                        if srt_response.status_code == 200:
+                            subtitle_text = srt_response.text
+                            logger.info(f"字幕下载成功，大小: {len(subtitle_text)} 字符")
+                        else:
+                            logger.error(f"下载字幕失败: {srt_response.status_code}")
+                    
+                    # 如果音频下载成功，返回结果
+                    if audio_data:
+                        return {
+                            'success': True,
+                            'audio_data': audio_data,
+                            'file_size': len(audio_data),
+                            'voice': voice,
+                            'duration': result.get('duration'),
+                            'subtitle_text': subtitle_text,  # 返回下载的字幕内容
+                            'srt': srt_file  # 保留原始文件路径信息
+                        }
+                    else:
+                        logger.error(f"音频文件下载失败")
                     
                     # 尝试其他可能的音频数据字段
                     audio_url = result.get('audioUrl')
