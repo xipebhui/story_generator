@@ -117,14 +117,7 @@ class YouTubeAPIClient:
             return result
             
         except Exception as e:
-            api_key_used = api_key if 'api_key' in locals() else None
-            error_type = self._handle_api_error(e, api_key_used)
-            
-            if error_type == "quota_exceeded" and self.api_key_manager:
-                self.logger.info("🔄 配额超限，尝试使用新API密钥重试...")
-                return self._retry_with_new_key(self.search, query, max_results, published_after)
-            
-            self.logger.error(f"❌ 搜索失败: {error_type}")
+            self.logger.error(f"❌ 搜索失败: {e}")
             raise
 
     def get_video_details(self, video_ids: List[str]) -> Optional[Dict[str, Any]]:
@@ -154,14 +147,7 @@ class YouTubeAPIClient:
             return result
             
         except Exception as e:
-            api_key_used = api_key if 'api_key' in locals() else None
-            error_type = self._handle_api_error(e, api_key_used)
-            
-            if error_type == "quota_exceeded" and self.api_key_manager:
-                self.logger.info("🔄 配额超限，尝试使用新API密钥重试...")
-                return self._retry_with_new_key(self.get_video_details, video_ids)
-            
-            self.logger.error(f"❌ 视频详情获取失败: {error_type}")
+            self.logger.error(f"❌ 视频详情获取失败: {e}")
             raise
 
     def get_channel_details(self, channel_ids: List[str] = [], handles: List[str] = []) -> Optional[Dict[str, Any]]:
@@ -192,14 +178,7 @@ class YouTubeAPIClient:
             return result
             
         except Exception as e:
-            api_key_used = api_key if 'api_key' in locals() else None
-            error_type = self._handle_api_error(e, api_key_used)
-            
-            if error_type == "quota_exceeded" and self.api_key_manager:
-                self.logger.info("🔄 配额超限，尝试使用新API密钥重试...")
-                return self._retry_with_new_key(self.get_channel_details, channel_ids, handles)
-            
-            self.logger.error(f"❌ 频道详情获取失败: {error_type}")
+            self.logger.error(f"❌ 频道详情获取失败: {e}")
             raise
 
     @retry((HttpError, ssl.SSLError, ssl.SSLEOFError), tries=3, delay=2, backoff=2)
@@ -232,14 +211,8 @@ class YouTubeAPIClient:
             return result
             
         except Exception as e:
-            api_key_used = api_key if 'api_key' in locals() else None
-            error_type = self._handle_api_error(e, api_key_used)
             
-            if error_type == "quota_exceeded" and self.api_key_manager:
-                self.logger.info("🔄 配额超限，尝试使用新API密钥重试...")
-                return self._retry_with_new_key(self.get_channel_activity, channel_id, published_after)
-            
-            self.logger.error(f"❌ 频道活动获取失败: {error_type}")
+            self.logger.error(f"❌ 频道活动获取失败: {e}")
             raise
 
     @retry((HttpError, ssl.SSLError, ssl.SSLEOFError), tries=3, delay=2, backoff=2)
@@ -271,14 +244,8 @@ class YouTubeAPIClient:
             return result
             
         except Exception as e:
-            api_key_used = api_key if 'api_key' in locals() else None
-            error_type = self._handle_api_error(e, api_key_used)
-            
-            if error_type == "quota_exceeded" and self.api_key_manager:
-                self.logger.info("🔄 配额超限，尝试使用新API密钥重试...")
-                return self._retry_with_new_key(self.get_playlist_items, playlist_id, max_results, page_token)
-            
-            self.logger.error(f"❌ 播放列表视频获取失败: {error_type}")
+
+            self.logger.error(f"❌ 播放列表视频获取失败: {e}")
             raise
 
     @retry((HttpError, ssl.SSLError, ssl.SSLEOFError), tries=3, delay=2, backoff=2)

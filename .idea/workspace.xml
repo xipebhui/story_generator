@@ -5,20 +5,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="b06674bc-41ad-4cbf-b795-3fc27c1ebd5f" name="更改" comment="完成脚本创作">
-      <change beforePath="$PROJECT_DIR$/.env" beforeDir="false" afterPath="$PROJECT_DIR$/.env" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pipeline_core.py" beforeDir="false" afterPath="$PROJECT_DIR$/pipeline_core.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/prompts/dna_extractor.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/prompts/dna_extractor2.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/prompts/jimeng_prompt_generator.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/prompts/scene_extractor.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/prompts/sd_image_generator.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/prompts/sd_image_generator_v2.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/prompts/sd_prompt_generator.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/prompts/story_compare.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/prompts/story_header.md" beforeDir="false" afterPath="$PROJECT_DIR$/prompts/story_header.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/voice_gen/tts_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/voice_gen/tts_client.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/voice_gen/tts_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/voice_gen/tts_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/youtube_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/youtube_client.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
