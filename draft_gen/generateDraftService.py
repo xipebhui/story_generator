@@ -336,11 +336,15 @@ class DraftGeneratorService:
         srt_path = os.path.join(audio_dir, f"{audio_name}.srt")
         srt_dest = None
         
+        # 验证字幕文件是否存在
+        srt_file_path = None
         if subtitle_service.validate_subtitle_file(audio_path):
             srt_filename = f"subtitle_{os.path.basename(srt_path)}"
             srt_dest = os.path.join(materials_dir, srt_filename)
             shutil.copy(srt_path, srt_dest)
             print(f"复制字幕: {os.path.basename(srt_path)}")
+            # 保存原始srt路径用于后续处理
+            srt_file_path = srt_path
 
         # 复制图片
         image_relative_paths = []
@@ -367,7 +371,7 @@ class DraftGeneratorService:
             enable_effects,
             enable_keyframes,
             image_scale,
-            srt_dest  # 传递字幕文件路径
+            srt_file_path  # 传递原始字幕文件路径（可能为None）
         )
 
         # 9. 复制元信息文件
@@ -382,19 +386,14 @@ class DraftGeneratorService:
         print("\n创建 ZIP 包...")
         zip_path = self._create_zip_package(draft_dir)
         
-        # 12. 移动到本地剪映目录（如果配置了）
-        logger.info("检查本地目录配置...")
-        local_path = self._move_to_local_dir(draft_dir, video_title)
-        
-        # 如果成功移动，更新返回路径
-        final_path = local_path if local_path else draft_dir
+        # 12. 不再在此处移动到本地剪映目录，由 pipeline_core.py 统一处理
+        # 这样避免重复移动的问题
+        logger.info("草稿生成完成，跳过本地目录移动（由pipeline处理）")
+        final_path = draft_dir
 
         print(f"\n{'=' * 60}")
         safe_print(f"✅ 生成完成!")
-        if local_path:
-            print(f"草稿已移动到: {local_path}")
-        else:
-            print(f"草稿目录: {draft_dir}")
+        print(f"草稿目录: {draft_dir}")
         print(f"ZIP 包: {zip_path}")
         print(f"总时长: {audio_duration_ms / 1000:.2f} 秒")
         print(f"图片数量: {len(selected_images)}")
@@ -405,10 +404,7 @@ class DraftGeneratorService:
         if enable_keyframes:
             print(f"包含关键帧: 已添加动画效果（缩放: {image_scale}x）")
         print(f"画布比例: 16:9 (1920x1080)")
-        if local_path:
-            print(f"\n📌 可以直接在剪映中打开该目录")
-        else:
-            print(f"\n📌 可以将草稿 ZIP 包导入剪映使用")
+        print(f"\n📌 草稿将由pipeline移动到本地剪映目录（如果配置）")
         print(f"{'=' * 60}\n")
 
         return final_path
