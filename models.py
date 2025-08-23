@@ -19,6 +19,7 @@ class Gender(Enum):
 class StageStatus(Enum):
     """阶段执行状态"""
     PENDING = "pending"
+    RUNNING = "running"
     PROCESSING = "processing"
     SUCCESS = "success"
     FAILED = "failed"
@@ -41,6 +42,7 @@ class PipelineRequest(BaseModel):
     gender: Gender = Field(Gender.FEMALE, description="语音性别")
     duration: int = Field(120, ge=30, le=600, description="每张图片展示时长(秒)")
     image_dir: Optional[str] = Field(None, description="图库目录路径")
+    export_video: bool = Field(False, description="是否导出视频文件")
     
     @validator('video_id')
     def validate_video_id(cls, v):

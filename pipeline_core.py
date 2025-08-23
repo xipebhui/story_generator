@@ -159,6 +159,17 @@ class VideoPipeline:
                         response_status = TaskStatus.FAILED
                         error_message = f"剪映草稿生成失败: {stage3.error}"
                         logger.error(error_message)
+                    else:
+                        # 阶段4: 视频导出（可选）
+                        if self.request.export_video:
+                            stage4 = self._run_video_export()
+                            self.stages_results.append(stage4)
+                            
+                            if stage4.status == StageStatus.FAILED:
+                                # 视频导出失败不影响整体流程
+                                logger.warning(f"视频导出失败: {stage4.error}")
+                            else:
+                                logger.info("视频导出成功")
             
             # 读取生成的报告
             reports = self._read_generated_reports()
@@ -662,6 +673,66 @@ class VideoPipeline:
             result.output_files = output_files
         
         return result
+    
+    def _run_video_export(self) -> StageResult:
+        """
+        执行视频导出阶段
+        
+        Returns:
+            StageResult: 执行结果
+        """
+        from export_video import VideoExporter
+        
+        start_time = datetime.now()
+        stage_result = StageResult(
+            name="视频导出",
+            status=StageStatus.RUNNING
+        )
+        
+        try:
+            # 获取草稿ID - 从草稿路径中提取
+            draft_path = self.paths.get('draft')
+            if not draft_path or not draft_path.exists():
+                raise Exception("草稿文件不存在，无法导出视频")
+            
+            # 草稿ID就是文件夹名
+            draft_id = draft_path.name
+            
+            # 复制草稿到导出服务期望的位置
+            import config
+            import shutil
+            target_draft_path = Path(config.FINAL_JIANYING_DRAFTS_PATH) / draft_id
+            
+            if not target_draft_path.exists():
+                logger.info(f"复制草稿到导出目录: {target_draft_path}")
+                shutil.copytree(draft_path, target_draft_path)
+            
+            # 创建导出器并执行导出
+            exporter = VideoExporter()
+            
+            # 设置视频输出目录 - 使用配置中的目录
+            video_output_dir = Path(config.VIDEO_OUTPUT_DIR) / self.request.creator_id
+            video_output_dir.mkdir(parents=True, exist_ok=True)
+            
+            logger.info(f"开始导出视频: {draft_id}")
+            video_path = exporter.export_video(draft_id, str(video_output_dir))
+            
+            # 更新路径
+            self.paths['video'] = Path(video_path)
+            
+            stage_result.status = StageStatus.SUCCESS
+            stage_result.output_files = [video_path]
+            logger.info(f"[OK] 视频导出成功: {video_path}")
+            
+        except Exception as e:
+            stage_result.status = StageStatus.FAILED
+            stage_result.error = str(e)
+            logger.error(f"[ERROR] 视频导出失败: {e}")
+        
+        end_time = datetime.now()
+        stage_result.duration = (end_time - start_time).total_seconds()
+        
+        return stage_result
     
     def _read_generated_reports(self) -> Dict[str, Any]:
         """

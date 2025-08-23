@@ -110,6 +110,12 @@ def main():
         help='不使用缓存，强制重新执行所有步骤'
     )
     
+    parser.add_argument(
+        '--export-video',
+        action='store_true',
+        help='生成草稿后自动导出为视频文件'
+    )
+    
     # 解析参数
     args = parser.parse_args()
     
@@ -137,7 +143,8 @@ def main():
             creator_id=args.creatorid,
             gender=Gender(args.gender),
             duration=args.duration,
-            image_dir=args.image_dir
+            image_dir=args.image_dir,
+            export_video=args.export_video
         )
     except Exception as e:
         print(f"✗ 参数验证失败: {e}")
