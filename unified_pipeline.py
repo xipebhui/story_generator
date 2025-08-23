@@ -11,6 +11,10 @@ import json
 from pathlib import Path
 from datetime import datetime
 
+# 加载环境变量
+from config_loader import load_env_file
+load_env_file()
+
 from pipeline_core import VideoPipeline
 from models import PipelineRequest, Gender, TaskStatus
 
@@ -100,6 +104,12 @@ def main():
         help='仅检查先决条件，不执行'
     )
     
+    parser.add_argument(
+        '--no-cache',
+        action='store_true',
+        help='不使用缓存，强制重新执行所有步骤'
+    )
+    
     # 解析参数
     args = parser.parse_args()
     
@@ -143,7 +153,7 @@ def main():
         print(f"  图库目录: {request.image_dir}")
     
     # 创建Pipeline实例
-    pipeline = VideoPipeline(request, verbose=args.verbose)
+    pipeline = VideoPipeline(request, verbose=args.verbose, use_cache=not args.no_cache)
     
     # 执行Pipeline
     print("\n开始执行Pipeline...")

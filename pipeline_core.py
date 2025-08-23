@@ -59,7 +59,7 @@ class VideoPipeline:
     """视频生成Pipeline核心类"""
     
     def __init__(self, request: PipelineRequest, scripts_base_dir: str = None, 
-                 log_file: Optional[str] = None, verbose: bool = False):
+                 log_file: Optional[str] = None, verbose: bool = False, use_cache: bool = True):
         """
         初始化Pipeline
         
@@ -68,12 +68,14 @@ class VideoPipeline:
             scripts_base_dir: 脚本所在的基础目录，默认为当前目录
             log_file: 日志文件路径
             verbose: 是否输出详细日志
+            use_cache: 是否使用缓存（跳过已完成的步骤）
         """
         self.request = request
         self.stages_results = []
         self.start_time = None
         self.end_time = None
         self.verbose = verbose
+        self.use_cache = use_cache
         
         # 设置日志
         if log_file or verbose:
@@ -326,6 +328,27 @@ class VideoPipeline:
         Returns:
             StageResult: 执行结果
         """
+        # 检查是否已经完成（缓存检测）
+        story_file = Path(f"./story_result/{self.request.creator_id}/{self.request.video_id}/final/story.txt")
+        if self.use_cache and story_file.exists():
+            logger.info("✅ 故事二创已完成（使用缓存）")
+            result = StageResult(
+                name="故事二创",
+                status=StageStatus.SUCCESS,
+                start_time=datetime.now(),
+                end_time=datetime.now(),
+                duration=0,
+                output="使用已存在的故事文件"
+            )
+            output_files = []
+            for path in [story_file, 
+                        story_file.parent / "report.md", 
+                        story_file.parent / "youtube_metadata.json"]:
+                if path.exists():
+                    output_files.append(str(path))
+            result.output_files = output_files
+            return result
+        
         script_path = self.scripts_base_dir / "story_pipeline_v3_runner.py"
         command = [
             sys.executable,
@@ -461,6 +484,29 @@ class VideoPipeline:
         Returns:
             StageResult: 执行结果
         """
+        # 检查是否已经完成（缓存检测）
+        audio_path = Path(f"./output/{self.request.creator_id}_{self.request.video_id}_story.mp3")
+        srt_path = Path(f"./output/{self.request.creator_id}_{self.request.video_id}_story.srt")
+        
+        if self.use_cache and audio_path.exists():
+            logger.info("✅ 语音生成已完成（使用缓存）")
+            result = StageResult(
+                name="语音生成",
+                status=StageStatus.SUCCESS,
+                start_time=datetime.now(),
+                end_time=datetime.now(),
+                duration=0,
+                output="使用已存在的音频文件"
+            )
+            output_files = []
+            if audio_path.exists():
+                output_files.append(str(audio_path))
+                self.paths['audio'] = audio_path
+            if srt_path.exists():
+                output_files.append(str(srt_path))
+            result.output_files = output_files
+            return result
+        
         # 先进行文本预处理
         logger.info("准备进行语音生成...")
         if not self._preprocess_story_for_tts():
@@ -529,9 +575,80 @@ class VideoPipeline:
         # 记录生成的文件
         if result.status == StageStatus.SUCCESS:
             output_files = []
-            for path in [self.paths['draft'], self.paths['video']]:
+            
+            # 处理草稿ZIP文件 - 解压并移动到配置的目录
+            draft_zip = Path(f"./output/drafts/{self.request.creator_id}_{self.request.video_id}_story.zip")
+            draft_folder = Path(f"./output/drafts/{self.request.creator_id}_{self.request.video_id}_story")
+            
+            if draft_zip.exists():
+                # 获取目标目录
+                draft_dir = os.environ.get('DRAFT_LOCAL_DIR')
+                if draft_dir:
+                    draft_target_dir = Path(draft_dir)
+                    draft_target_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    # 生成目标文件夹名（包含时间戳以避免覆盖）
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    draft_folder_name = f"{self.request.creator_id}_{self.request.video_id}_{timestamp}"
+                    draft_target = draft_target_dir / draft_folder_name
+                    
+                    import shutil
+                    import zipfile
+                    try:
+                        # 解压ZIP文件到目标目录
+                        with zipfile.ZipFile(draft_zip, 'r') as zip_ref:
+                            zip_ref.extractall(draft_target)
+                        logger.info(f"✅ 草稿已解压到: {draft_target}")
+                        output_files.append(str(draft_target))
+                        self.paths['draft'] = draft_target
+                        
+                        # 删除原始ZIP文件（可选）
+                        draft_zip.unlink()
+                        logger.debug(f"已删除ZIP文件: {draft_zip}")
+                        
+                        # 如果原始文件夹存在，也删除它
+                        if draft_folder.exists():
+                            shutil.rmtree(draft_folder)
+                            logger.debug(f"已删除原始文件夹: {draft_folder}")
+                            
+                    except Exception as e:
+                        logger.error(f"处理草稿文件失败: {e}")
+                        # 如果处理失败，仍然记录原始位置
+                        output_files.append(str(draft_zip))
+                else:
+                    logger.warning("未配置 DRAFT_LOCAL_DIR，草稿文件保留在原位置")
+                    output_files.append(str(draft_zip))
+            elif draft_folder.exists():
+                # 如果只有文件夹没有ZIP，直接移动文件夹
+                draft_dir = os.environ.get('DRAFT_LOCAL_DIR')
+                if draft_dir:
+                    draft_target_dir = Path(draft_dir)
+                    draft_target_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    draft_folder_name = f"{self.request.creator_id}_{self.request.video_id}_{timestamp}"
+                    draft_target = draft_target_dir / draft_folder_name
+                    
+                    import shutil
+                    try:
+                        shutil.move(str(draft_folder), str(draft_target))
+                        logger.info(f"✅ 草稿文件夹已移动到: {draft_target}")
+                        output_files.append(str(draft_target))
+                        self.paths['draft'] = draft_target
+                    except Exception as e:
+                        logger.error(f"移动草稿文件夹失败: {e}")
+                        output_files.append(str(draft_folder))
+                else:
+                    logger.warning("未配置 DRAFT_LOCAL_DIR，草稿文件夹保留在原位置")
+                    output_files.append(str(draft_folder))
+            else:
+                logger.warning(f"草稿文件不存在: {draft_zip} 或 {draft_folder}")
+            
+            # 处理其他可能的输出文件
+            for path in [self.paths['video']]:
                 if path.exists():
                     output_files.append(str(path))
+            
             result.output_files = output_files
         
         return result
