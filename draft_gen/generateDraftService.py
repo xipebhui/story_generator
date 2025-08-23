@@ -392,7 +392,7 @@ class DraftGeneratorService:
         final_path = draft_dir
 
         print(f"\n{'=' * 60}")
-        safe_print(f"✅ 生成完成!")
+        safe_print(f"[OK] 生成完成!")
         print(f"草稿目录: {draft_dir}")
         print(f"ZIP 包: {zip_path}")
         print(f"总时长: {audio_duration_ms / 1000:.2f} 秒")
@@ -404,7 +404,7 @@ class DraftGeneratorService:
         if enable_keyframes:
             print(f"包含关键帧: 已添加动画效果（缩放: {image_scale}x）")
         print(f"画布比例: 16:9 (1920x1080)")
-        print(f"\n📌 草稿将由pipeline移动到本地剪映目录（如果配置）")
+        print(f"\n[INFO] 草稿将由pipeline移动到本地剪映目录（如果配置）")
         print(f"{'=' * 60}\n")
 
         return final_path
@@ -956,7 +956,7 @@ def generate_draft_from_story(cid: str, vid: str,
         return draft_dir
         
     except Exception as e:
-        safe_print(f"\n❌ 生成失败: {str(e)}")
+        safe_print(f"\n[ERROR] 生成失败: {str(e)}")
         raise
 
 
@@ -1008,7 +1008,7 @@ def main():
             random_seed=args.seed
         )
         
-        print(f"\n✨ 草稿已生成到: {draft_dir}")
+        print(f"\n[SUCCESS] 草稿已生成到: {draft_dir}")
         print("\n下一步操作：")
         print("1. 打开剪映专业版")
         print("2. 选择'导入草稿'")
@@ -1016,13 +1016,13 @@ def main():
         print("4. 开始编辑你的视频！")
         
     except FileNotFoundError as e:
-        safe_print(f"\n❌ 文件未找到: {str(e)}")
+        safe_print(f"\n[ERROR] 文件未找到: {str(e)}")
         print("\n请确保已经完成以下步骤：")
         print("1. 生成故事音频: python voice_gen/tts_client.py --cid <cid> --vid <vid> --gender <0|1>")
         print("2. 生成图片: python image_generator.py")
         
     except Exception as e:
-        safe_print(f"\n❌ 生成失败: {str(e)}")
+        safe_print(f"\n[ERROR] 生成失败: {str(e)}")
         import traceback
         traceback.print_exc()
 

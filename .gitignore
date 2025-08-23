@@ -10,3 +10,4 @@ output/
 .venv/
 story_v3/
 .env
+outputs/

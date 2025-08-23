@@ -12,14 +12,34 @@ from pathlib import Path
 
 # 导入安全打印函数
 try:
-    from utils import safe_print
+    from utils import safe_print, setup_console_encoding
+    # 设置控制台编码
+    setup_console_encoding()
 except ImportError:
     # 如果导入失败，定义一个简单的 safe_print
     import platform
+    import sys
     def safe_print(message: str, file=None):
         if platform.system() == 'Windows':
-            message = message.replace('✅', '[OK]').replace('❌', '[ERROR]').replace('⚠️', '[WARNING]').replace('ℹ️', '[INFO]')
-        print(message, file=file)
+            # 替换所有可能的 Unicode 符号
+            message = (message
+                      .replace('✅', '[OK]')
+                      .replace('[OK]', '[OK]')
+                      .replace('❌', '[ERROR]')
+                      .replace('✗', '[ERROR]')
+                      .replace('[WARNING]', '[WARNING]')
+                      .replace('[INFO]', '[INFO]')
+                      .replace('📁', '[FOLDER]')
+                      .replace('📄', '[FILE]')
+                      .replace('⏱️', '[TIME]'))
+        try:
+            print(message, file=file)
+        except UnicodeEncodeError:
+            # 如果仍然失败，使用 ascii 编码
+            if file is None:
+                print(message.encode('ascii', 'replace').decode('ascii'))
+            else:
+                print(message.encode('ascii', 'replace').decode('ascii'), file=file)
 
 
 class JianyingSubtitleService:
@@ -72,11 +92,11 @@ class JianyingSubtitleService:
             srt_name = Path(srt_path).stem
             
             if audio_name != srt_name:
-                safe_print(f"⚠️ 警告：音频文件名 '{audio_name}' 与字幕文件名 '{srt_name}' 不匹配")
+                safe_print(f"[WARNING] 警告：音频文件名 '{audio_name}' 与字幕文件名 '{srt_name}' 不匹配")
                 return None
             
             if os.path.exists(srt_path):
-                safe_print(f"✓ 找到字幕文件：{os.path.basename(srt_path)}")
+                safe_print(f"[OK] 找到字幕文件：{os.path.basename(srt_path)}")
                 return srt_path
         else:
             # 自动查找同名的SRT文件
@@ -85,10 +105,10 @@ class JianyingSubtitleService:
             srt_path = os.path.join(audio_dir, f"{audio_name}.srt")
             
             if os.path.exists(srt_path):
-                safe_print(f"✓ 自动检测到字幕文件：{os.path.basename(srt_path)}")
+                safe_print(f"[OK] 自动检测到字幕文件：{os.path.basename(srt_path)}")
                 return srt_path
         
-        safe_print("ℹ️ 未找到匹配的字幕文件，将不添加字幕")
+        safe_print("[INFO] 未找到匹配的字幕文件，将不添加字幕")
         return None
     
     def parse_srt(self, srt_content: str) -> List[Dict]:

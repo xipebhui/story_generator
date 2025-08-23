@@ -303,11 +303,11 @@ class VideoPipeline:
             if returncode == 0:
                 result.status = StageStatus.SUCCESS
                 result.output = stdout
-                logger.info(f"✅ 阶段 {stage_name} 执行成功，耗时: {duration:.2f}秒")
+                logger.info(f"[OK] 阶段 {stage_name} 执行成功，耗时: {duration:.2f}秒")
             else:
                 result.status = StageStatus.FAILED
                 result.error = f"命令返回非零状态码: {returncode}\n{stdout}"
-                logger.error(f"❌ 阶段 {stage_name} 执行失败，返回码: {returncode}")
+                logger.error(f"[ERROR] 阶段 {stage_name} 执行失败，返回码: {returncode}")
                 logger.error(f"错误输出:\n{stdout}")
             
             result.end_time = end_time
@@ -318,7 +318,7 @@ class VideoPipeline:
             result.error = f"执行超时（{timeout}秒）"
             result.end_time = datetime.now()
             result.duration = (result.end_time - start_time).total_seconds()
-            logger.error(f"⏱️ 阶段 {stage_name} 执行超时 ({timeout}秒)")
+            logger.error(f"[TIMEOUT] 阶段 {stage_name} 执行超时 ({timeout}秒)")
             process.kill()
             
         except Exception as e:
@@ -326,7 +326,7 @@ class VideoPipeline:
             result.error = str(e)
             result.end_time = datetime.now()
             result.duration = (result.end_time - start_time).total_seconds()
-            logger.exception(f"💥 阶段 {stage_name} 执行出错")
+            logger.exception(f"[CRASH] 阶段 {stage_name} 执行出错")
         
         logger.info(f"{'='*60}")
         return result
@@ -341,7 +341,7 @@ class VideoPipeline:
         # 检查是否已经完成（缓存检测）
         story_file = Path(f"./story_result/{self.request.creator_id}/{self.request.video_id}/final/story.txt")
         if self.use_cache and story_file.exists():
-            logger.info("✅ 故事二创已完成（使用缓存）")
+            logger.info("[OK] 故事二创已完成（使用缓存）")
             result = StageResult(
                 name="故事二创",
                 status=StageStatus.SUCCESS,
@@ -499,7 +499,7 @@ class VideoPipeline:
         srt_path = Path(f"./output/{self.request.creator_id}_{self.request.video_id}_story.srt")
         
         if self.use_cache and audio_path.exists():
-            logger.info("✅ 语音生成已完成（使用缓存）")
+            logger.info("[OK] 语音生成已完成（使用缓存）")
             result = StageResult(
                 name="语音生成",
                 status=StageStatus.SUCCESS,
@@ -608,7 +608,7 @@ class VideoPipeline:
                         # 解压ZIP文件到目标目录
                         with zipfile.ZipFile(draft_zip, 'r') as zip_ref:
                             zip_ref.extractall(draft_target)
-                        logger.info(f"✅ 草稿已解压到: {draft_target}")
+                        logger.info(f"[OK] 草稿已解压到: {draft_target}")
                         output_files.append(str(draft_target))
                         self.paths['draft'] = draft_target
                         
@@ -642,7 +642,7 @@ class VideoPipeline:
                     import shutil
                     try:
                         shutil.move(str(draft_folder), str(draft_target))
-                        logger.info(f"✅ 草稿文件夹已移动到: {draft_target}")
+                        logger.info(f"[OK] 草稿文件夹已移动到: {draft_target}")
                         output_files.append(str(draft_target))
                         self.paths['draft'] = draft_target
                     except Exception as e:
