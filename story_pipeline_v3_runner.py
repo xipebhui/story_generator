@@ -38,7 +38,15 @@ from pipeline_steps_v3 import (
     SaveFinalOutputStep
 )
 from pipeline_steps_youtube_metadata import GenerateYouTubeMetadataStep
-from youtube_client import YouTubeAPIClient
+
+# 尝试使用基于requests的客户端（对Windows + SOCKS5代理更友好）
+try:
+    from youtube_client_requests import YouTubeAPIClient
+    print("[INFO] 使用基于requests的YouTube客户端（SOCKS5代理支持）")
+except ImportError:
+    from youtube_client import YouTubeAPIClient
+    print("[INFO] 使用原始YouTube客户端")
+    
 from gemini_client import GeminiClient
 
 # 配置日志

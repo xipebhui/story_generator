@@ -13,9 +13,30 @@ from pathlib import Path
 from typing import Optional, Literal
 from pydub import AudioSegment
 import argparse
+import platform
 
 # 导入TTS服务
 from tts_service import TTSServiceFactory, TTSServiceInterface
+
+# 导入工具函数处理Windows编码问题
+try:
+    from utils import safe_print, setup_console_encoding
+    # 设置控制台编码
+    setup_console_encoding()
+    use_safe_print = True
+except ImportError:
+    # 如果导入失败，定义一个简单的 safe_print
+    def safe_print(message: str, file=None):
+        if platform.system() == 'Windows':
+            # 替换emoji字符
+            message = message.replace('✅', '[OK]').replace('❌', '[ERROR]').replace('⚠️', '[WARNING]')
+        try:
+            print(message, file=file)
+        except UnicodeEncodeError:
+            # 移除所有非 ASCII 字符
+            message_ascii = message.encode('ascii', 'replace').decode('ascii')
+            print(message_ascii, file=file)
+    use_safe_print = True
 
 # 配置日志
 import os
@@ -91,10 +112,10 @@ class TTSClient:
             with open(audio_path, 'wb') as f:
                 f.write(result['audio_data'])
             
-            print(f"生成成功，音频文件已保存: {audio_path}")
+            safe_print(f"生成成功，音频文件已保存: {audio_path}")
             if result.get('duration'):
-                print(f"音频时长: {result['duration']:.2f}秒")
-            print(f"文件大小: {result['file_size']:,} 字节")
+                safe_print(f"音频时长: {result['duration']:.2f}秒")
+            safe_print(f"文件大小: {result['file_size']:,} 字节")
             
             # 保存字幕文件（如果有）
             srt_path = None
@@ -103,7 +124,7 @@ class TTSClient:
                 srt_path = os.path.join(save_path, srt_filename)
                 with open(srt_path, 'w', encoding='utf-8') as f:
                     f.write(result['subtitle_text'])
-                print(f"字幕文件已保存: {srt_path}")
+                safe_print(f"字幕文件已保存: {srt_path}")
             
             return {
                 'success': True,
@@ -154,7 +175,7 @@ class TTSClient:
                     logger.debug(f"原始文本: {original_text[:100]}...")
                     logger.debug(f"清理后文本: {text[:100]}...")
             
-            print(f"正在生成语音 (行号: {line_num}): {text[:50]}...")
+            safe_print(f"正在生成语音 (行号: {line_num}): {text[:50]}...")
             
             # 调用服务生成语音
             # 批量处理时强制使用异步接口，避免同步接口的限制
@@ -174,7 +195,7 @@ class TTSClient:
             with open(audio_path, 'wb') as f:
                 f.write(result['audio_data'])
             
-            print(f"生成成功，音频文件已保存: {audio_path}")
+            safe_print(f"生成成功，音频文件已保存: {audio_path}")
             
             # 保存字幕文件（如果有）
             srt_path = None
@@ -183,7 +204,7 @@ class TTSClient:
                 srt_path = os.path.join(save_path, srt_filename)
                 with open(srt_path, 'w', encoding='utf-8') as f:
                     f.write(result['subtitle_text'])
-                print(f"字幕文件已保存: {srt_path}")
+                safe_print(f"字幕文件已保存: {srt_path}")
             
             return {
                 'success': True,
@@ -331,7 +352,7 @@ class TTSClient:
             raise Exception("没有生成任何音频文件")
         
         logger.info(f"开始合并 {len(audio_files)} 个音频文件...")
-        print(f"开始合并 {len(audio_files)} 个音频文件...")
+        safe_print(f"开始合并 {len(audio_files)} 个音频文件...")
         
         # 分批合并，避免内存占用过大
         batch_size = 5  # 减小批次大小，每批合并5个文件
@@ -342,7 +363,7 @@ class TTSClient:
             batch_files = audio_files[i:i+batch_size]
             current_batch = batch_idx + 1
             logger.info(f"合并批次 {current_batch}/{total_batches} (文件 {i+1}-{min(i+batch_size, len(audio_files))})")
-            print(f"合并进度: {current_batch}/{total_batches} 批次")
+            safe_print(f"合并进度: {current_batch}/{total_batches} 批次")
             
             # 合并当前批次
             batch_combined = AudioSegment.empty()
@@ -372,7 +393,7 @@ class TTSClient:
         
         # 最终合并所有批次
         logger.info(f"开始最终合并 {len(temp_files)} 个批次文件...")
-        print(f"最终合并: {len(temp_files)} 个批次文件")
+        safe_print(f"最终合并: {len(temp_files)} 个批次文件")
         
         combined = AudioSegment.empty()
         for idx, temp_file in enumerate(temp_files, 1):
@@ -392,14 +413,14 @@ class TTSClient:
         # 保存合并后的音频
         output_path = f"./output/{c_id}_{v_id}_story.mp3"
         logger.info(f"正在保存最终音频文件: {output_path}")
-        print(f"保存最终音频: {output_path}")
+        safe_print(f"保存最终音频: {output_path}")
         
         # 确保输出目录存在
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         
         # 导出最终音频，使用合理的比特率
         combined.export(output_path, format="mp3", bitrate="128k")
-        logger.info(f"✅ 音频合并完成: {output_path}")
+        logger.info(f"[OK] 音频合并完成: {output_path}")
         
         # 获取音频信息
         total_duration = len(combined) / 1000.0  # 转换为秒
@@ -407,7 +428,7 @@ class TTSClient:
         logger.info(f"音频总时长: {total_duration:.2f} 秒")
         logger.info(f"文件大小: {file_size:,} 字节 ({file_size/1024/1024:.2f} MB)")
         
-        print(f"音频合并完成: {output_path}")
+        safe_print(f"音频合并完成: {output_path}")
         
         # 合并字幕文件
         srt_output_path = None
@@ -566,7 +587,7 @@ class TTSClient:
         if merged_content:
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write('\n\n'.join(merged_content))
-            print(f"字幕文件已合并: {output_path}")
+            safe_print(f"字幕文件已合并: {output_path}")
             return output_path
         
         return None
@@ -594,13 +615,13 @@ if __name__ == "__main__":
     client = TTSClient(service_type=args.service, base_url=args.url)
     
     try:
-        print(f"开始生成故事音频...")
-        print(f"Creator ID: {args.cid}")
-        print(f"Voice ID: {args.vid}")
-        print(f"性别: {'男声' if args.gender == 1 else '女声'}")
-        print(f"使用服务: {args.service}")
+        safe_print(f"开始生成故事音频...")
+        safe_print(f"Creator ID: {args.cid}")
+        safe_print(f"Voice ID: {args.vid}")
+        safe_print(f"性别: {'男声' if args.gender == 1 else '女声'}")
+        safe_print(f"使用服务: {args.service}")
         if args.url:
-            print(f"服务URL: {args.url}")
+            safe_print(f"服务URL: {args.url}")
         
         # 调用生成方法
         result = client.generate_story_audio(
@@ -609,12 +630,12 @@ if __name__ == "__main__":
             gender=gender
         )
         
-        print(f"\n✅ 音频生成成功！")
-        print(f"音频文件: {result['audio_path']}")
+        safe_print(f"\n[OK] 音频生成成功！")
+        safe_print(f"音频文件: {result['audio_path']}")
         if result.get('srt_path'):
-            print(f"字幕文件: {result['srt_path']}")
+            safe_print(f"字幕文件: {result['srt_path']}")
         
     except Exception as e:
-        print(f"\n❌ 生成失败: {e}")
+        safe_print(f"\n[ERROR] 生成失败: {e}")
         import sys
         sys.exit(1)
