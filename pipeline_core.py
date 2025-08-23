@@ -232,12 +232,22 @@ class VideoPipeline:
         
         try:
             # 执行命令，实时捕获输出
+            # Windows系统使用系统默认编码，其他系统使用UTF-8
+            import platform
+            if platform.system() == 'Windows':
+                # Windows使用GBK或系统默认编码
+                import locale
+                system_encoding = locale.getpreferredencoding() or 'gbk'
+            else:
+                system_encoding = 'utf-8'
+            
             process = subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,  # 合并stderr到stdout
                 text=True,
-                encoding='utf-8',
+                encoding=system_encoding,
+                errors='replace',  # 遇到无法解码的字符时替换而不是报错
                 bufsize=1,  # 行缓冲
                 universal_newlines=True
             )

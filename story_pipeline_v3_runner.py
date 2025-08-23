@@ -67,8 +67,8 @@ class StrictPipeline(Pipeline):
         Returns:
             成功返回True，失败直接终止程序
         """
-        logger.info(f"🚀 启动严格模式Pipeline: {self.name}")
-        logger.info(f"📹 处理视频: {context.video_id}")
+        logger.info(f"[START] 启动严格模式Pipeline: {self.name}")
+        logger.info(f"[VIDEO] 处理视频: {context.video_id}")
         
         total_steps = len(self.steps)
         
@@ -84,7 +84,7 @@ class StrictPipeline(Pipeline):
                 if not result.success:
                     # 步骤失败，立即终止
                     logger.error(f"\n{'='*60}")
-                    logger.error(f"❌ 步骤失败: {step.name}")
+                    logger.error(f"[FAILED] 步骤失败: {step.name}")
                     logger.error(f"错误信息: {result.error}")
                     logger.error(f"Pipeline终止!")
                     logger.error(f"{'='*60}")
@@ -96,12 +96,12 @@ class StrictPipeline(Pipeline):
                     # 终止程序
                     sys.exit(1)
                 
-                logger.info(f"✅ 步骤完成: {step.name}")
+                logger.info(f"[OK] 步骤完成: {step.name}")
                 
             except Exception as e:
                 # 捕获异常，终止程序
                 logger.error(f"\n{'='*60}")
-                logger.error(f"💥 步骤异常: {step.name}")
+                logger.error(f"[ERROR] 步骤异常: {step.name}")
                 logger.error(f"异常信息: {str(e)}")
                 logger.error(f"Pipeline终止!")
                 logger.error(f"{'='*60}")
@@ -118,8 +118,8 @@ class StrictPipeline(Pipeline):
                 sys.exit(1)
         
         logger.info(f"\n{'='*60}")
-        logger.info(f"🎉 Pipeline执行成功!")
-        logger.info(f"📁 输出目录: {context.cache_dir}")
+        logger.info(f"[SUCCESS] Pipeline执行成功!")
+        logger.info(f"[OUTPUT] 输出目录: {context.cache_dir}")
         logger.info(f"{'='*60}")
         
         return True
@@ -154,7 +154,7 @@ class StoryPipelineV3Runner:
         # 加载提示词
         self._load_prompts()
         
-        logger.info("✅ V3 Pipeline Runner初始化完成")
+        logger.info("[OK] V3 Pipeline Runner初始化完成")
     
     def _init_clients(self):
         """初始化API客户端"""
@@ -170,7 +170,7 @@ class StoryPipelineV3Runner:
         
         self.gemini_client = GeminiClient(api_key=gemini_api_key)
         
-        logger.info("✅ API客户端初始化完成")
+        logger.info("[OK] API客户端初始化完成")
     
     def _load_prompts(self):
         """加载所有需要的提示词"""
@@ -184,9 +184,9 @@ class StoryPipelineV3Runner:
         for prompt_name in prompts_to_load:
             try:
                 self.prompt_manager.load_prompt(prompt_name)
-                logger.info(f"✅ 加载提示词: {prompt_name}")
+                logger.info(f"[OK] 加载提示词: {prompt_name}")
             except FileNotFoundError as e:
-                logger.warning(f"⚠️ 提示词文件不存在: {prompt_name} - {e}")
+                logger.warning(f"[WARNING] 提示词文件不存在: {prompt_name} - {e}")
     
     def create_pipeline(self) -> StrictPipeline:
         """创建V3 Pipeline"""
@@ -213,7 +213,7 @@ class StoryPipelineV3Runner:
             step.set_prompt_manager(self.prompt_manager)
             pipeline.add_step(step)
         
-        logger.info(f"✅ 创建Pipeline，包含 {len(steps)} 个步骤")
+        logger.info(f"[OK] 创建Pipeline，包含 {len(steps)} 个步骤")
         
         return pipeline
     
@@ -253,7 +253,7 @@ class StoryPipelineV3Runner:
     def _print_statistics(self, context: PipelineContextV3):
         """打印最终统计信息"""
         print("\n" + "="*60)
-        print("📊 最终统计")
+        print("[STATS] 最终统计")
         print("="*60)
         print(f"视频ID: {context.video_id}")
         print(f"视频标题: {context.video_info.get('title', 'N/A')}")
@@ -263,7 +263,7 @@ class StoryPipelineV3Runner:
         print("="*60)
         
         # 列出生成的文件
-        print("\n📁 生成的文件:")
+        print("\n[OUTPUT] 生成的文件:")
         final_dir = context.cache_dir / "final"
         if final_dir.exists():
             for file in final_dir.iterdir():
@@ -302,7 +302,7 @@ def main():
     
     # 打印启动信息
     print("\n" + "="*60)
-    print("🚀 YouTube Story Pipeline V3 - 严格模式")
+    print("YouTube Story Pipeline V3 - 严格模式")  # 移除emoji以避免编码问题
     print("="*60)
     print(f"视频ID: {args.video_id}")
     print(f"创作者: {args.creator}")
@@ -320,17 +320,17 @@ def main():
         )
         
         if success:
-            print("\n✅ Pipeline执行成功!")
+            print("\n[OK] Pipeline执行成功!")
             sys.exit(0)
         else:
-            print("\n❌ Pipeline执行失败!")
+            print("\n[FAILED] Pipeline执行失败!")
             sys.exit(1)
             
     except KeyboardInterrupt:
-        print("\n\n⚠️ 用户中断执行")
+        print("\n\n[WARNING] 用户中断执行")
         sys.exit(1)
     except Exception as e:
-        print(f"\n💥 发生致命错误: {e}")
+        print(f"\n[ERROR] 发生致命错误: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
