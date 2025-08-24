@@ -11,3 +11,4 @@ output/
 story_v3/
 .env
 outputs/
+/frontend/node_modules/
