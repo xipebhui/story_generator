@@ -570,11 +570,16 @@ class VideoPipeline:
     
     def _run_draft_generation(self) -> StageResult:
         """
-        执行剪映草稿生成阶段
+        执行剪映草稿生成阶段 - 简化版本
+        1. 执行草稿生成脚本
+        2. 将生成的草稿文件夹移动到 DRAFT_LOCAL_DIR
+        3. 记录草稿路径供后续使用
         
         Returns:
             StageResult: 执行结果
         """
+        import shutil
+        
         script_path = self.scripts_base_dir / "draft_gen" / "generateDraftService.py"
         command = [
             sys.executable,
@@ -593,82 +598,63 @@ class VideoPipeline:
         
         result = self._run_command(command, "剪映草稿生成", timeout=600)
         
-        # 记录生成的文件
+        # 处理生成的草稿文件
         if result.status == StageStatus.SUCCESS:
             output_files = []
             
-            # 处理草稿ZIP文件 - 解压并移动到配置的目录
-            draft_zip = Path(f"./output/drafts/{self.request.creator_id}_{self.request.video_id}_story.zip")
+            # 定义路径
             draft_folder = Path(f"./output/drafts/{self.request.creator_id}_{self.request.video_id}_story")
+            draft_zip = Path(f"./output/drafts/{self.request.creator_id}_{self.request.video_id}_story.zip")
             
-            if draft_zip.exists():
-                # 获取目标目录
-                draft_dir = os.environ.get('DRAFT_LOCAL_DIR')
+            # 获取目标目录配置
+            draft_dir = os.environ.get('DRAFT_LOCAL_DIR')
+            logger.info(f"DRAFT_LOCAL_DIR 配置值: {draft_dir}")
+            
+            # 检查草稿文件夹是否存在
+            if draft_folder.exists():
                 if draft_dir:
-                    draft_target_dir = Path(draft_dir)
-                    draft_target_dir.mkdir(parents=True, exist_ok=True)
-                    
-                    # 生成目标文件夹名（包含时间戳以避免覆盖）
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    draft_folder_name = f"{self.request.creator_id}_{self.request.video_id}_{timestamp}"
-                    draft_target = draft_target_dir / draft_folder_name
-                    
-                    import shutil
-                    import zipfile
+                    # 有配置目标目录，移动草稿
                     try:
-                        # 解压ZIP文件到目标目录
-                        with zipfile.ZipFile(draft_zip, 'r') as zip_ref:
-                            zip_ref.extractall(draft_target)
-                        logger.info(f"[OK] 草稿已解压到: {draft_target}")
-                        output_files.append(str(draft_target))
-                        self.paths['draft'] = draft_target
+                        draft_target_dir = Path(draft_dir)
+                        draft_target_dir.mkdir(parents=True, exist_ok=True)
                         
-                        # 删除原始ZIP文件（可选）
-                        draft_zip.unlink()
-                        logger.debug(f"已删除ZIP文件: {draft_zip}")
+                        # 生成唯一的目标文件夹名
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        draft_folder_name = f"{self.request.creator_id}_{self.request.video_id}_{timestamp}"
+                        draft_target = draft_target_dir / draft_folder_name
                         
-                        # 如果原始文件夹存在，也删除它
-                        if draft_folder.exists():
-                            shutil.rmtree(draft_folder)
-                            logger.debug(f"已删除原始文件夹: {draft_folder}")
-                            
-                    except Exception as e:
-                        logger.error(f"处理草稿文件失败: {e}")
-                        # 如果处理失败，仍然记录原始位置
-                        output_files.append(str(draft_zip))
-                else:
-                    logger.warning("未配置 DRAFT_LOCAL_DIR，草稿文件保留在原位置")
-                    output_files.append(str(draft_zip))
-            elif draft_folder.exists():
-                # 如果只有文件夹没有ZIP，直接移动文件夹
-                draft_dir = os.environ.get('DRAFT_LOCAL_DIR')
-                if draft_dir:
-                    draft_target_dir = Path(draft_dir)
-                    draft_target_dir.mkdir(parents=True, exist_ok=True)
-                    
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    draft_folder_name = f"{self.request.creator_id}_{self.request.video_id}_{timestamp}"
-                    draft_target = draft_target_dir / draft_folder_name
-                    
-                    import shutil
-                    try:
+                        # 移动文件夹
                         shutil.move(str(draft_folder), str(draft_target))
-                        logger.info(f"[OK] 草稿文件夹已移动到: {draft_target}")
-                        output_files.append(str(draft_target))
+                        logger.info(f"[OK] 草稿已移动到: {draft_target}")
+                        
+                        # 保存路径
                         self.paths['draft'] = draft_target
+                        output_files.append(str(draft_target))
+                        
                     except Exception as e:
-                        logger.error(f"移动草稿文件夹失败: {e}")
+                        logger.error(f"移动草稿失败: {e}")
+                        # 移动失败，使用原始位置
+                        self.paths['draft'] = draft_folder
                         output_files.append(str(draft_folder))
                 else:
-                    logger.warning("未配置 DRAFT_LOCAL_DIR，草稿文件夹保留在原位置")
+                    # 没有配置目标目录，使用原始位置
+                    logger.info("DRAFT_LOCAL_DIR 未配置，使用原始位置")
+                    self.paths['draft'] = draft_folder
                     output_files.append(str(draft_folder))
             else:
-                logger.warning(f"草稿文件不存在: {draft_zip} 或 {draft_folder}")
+                # 草稿文件夹不存在
+                logger.error(f"草稿文件夹不存在: {draft_folder}")
+                if draft_zip.exists():
+                    logger.info(f"发现ZIP文件: {draft_zip}")
+                    output_files.append(str(draft_zip))
             
-            # 处理其他可能的输出文件
-            for path in [self.paths['video']]:
-                if path.exists():
-                    output_files.append(str(path))
+            # 清理ZIP文件（如果存在）
+            if draft_zip.exists():
+                try:
+                    draft_zip.unlink()
+                    logger.debug(f"已删除ZIP文件: {draft_zip}")
+                except Exception as e:
+                    logger.debug(f"删除ZIP文件失败: {e}")
             
             result.output_files = output_files
         
