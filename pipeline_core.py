@@ -681,7 +681,7 @@ class VideoPipeline:
         Returns:
             StageResult: 执行结果
         """
-        from export_video import VideoExporter
+        from export_video_simple import export_video
         
         start_time = datetime.now()
         stage_result = StageResult(
@@ -690,39 +690,28 @@ class VideoPipeline:
         )
         
         try:
-            # 获取草稿ID - 从草稿路径中提取
+            # 获取草稿路径
             draft_path = self.paths.get('draft')
             if not draft_path or not draft_path.exists():
                 raise Exception("草稿文件不存在，无法导出视频")
             
-            # 草稿ID就是文件夹名
-            draft_id = draft_path.name
+            # 草稿名称就是文件夹名
+            draft_name = draft_path.name
             
-            # 复制草稿到导出服务期望的位置
-            import config
-            import shutil
-            target_draft_path = Path(config.FINAL_JIANYING_DRAFTS_PATH) / draft_id
+            logger.info(f"开始导出视频，草稿名称: {draft_name}")
             
-            if not target_draft_path.exists():
-                logger.info(f"复制草稿到导出目录: {target_draft_path}")
-                shutil.copytree(draft_path, target_draft_path)
+            # 调用导出函数
+            video_path = export_video(draft_name)
             
-            # 创建导出器并执行导出
-            exporter = VideoExporter()
-            
-            # 设置视频输出目录 - 使用配置中的目录
-            video_output_dir = Path(config.VIDEO_OUTPUT_DIR) / self.request.creator_id
-            video_output_dir.mkdir(parents=True, exist_ok=True)
-            
-            logger.info(f"开始导出视频: {draft_id}")
-            video_path = exporter.export_video(draft_id, str(video_output_dir))
-            
-            # 更新路径
-            self.paths['video'] = Path(video_path)
-            
-            stage_result.status = StageStatus.SUCCESS
-            stage_result.output_files = [video_path]
-            logger.info(f"[OK] 视频导出成功: {video_path}")
+            if video_path:
+                # 更新路径
+                self.paths['video'] = Path(video_path)
+                
+                stage_result.status = StageStatus.SUCCESS
+                stage_result.output_files = [video_path]
+                logger.info(f"[OK] 视频导出成功: {video_path}")
+            else:
+                raise Exception("导出服务返回空路径")
             
         except Exception as e:
             stage_result.status = StageStatus.FAILED

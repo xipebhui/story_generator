@@ -34,14 +34,14 @@ except ImportError:
             print(message_ascii, file=file)
 
 from pydub import AudioSegment
-from models.draft_models import (
+from draft_gen.models.draft_models import (
     Draft, Track, Segment, VideoMaterial, AudioMaterial, Materials,
     Timerange, Clip, Transition, VideoEffect, Keyframe, CommonKeyframe
 )
-from models.draft_effects_library import (
+from draft_gen.models.draft_effects_library import (
     Transitions, VideoEffects, SpeedInfo, CanvasInfo, MaterialAnimationInfo
 )
-from jianying_subtitle_service import get_subtitle_service
+from draft_gen.jianying_subtitle_service import get_subtitle_service
 import uuid
 
 # 配置日志
@@ -251,6 +251,7 @@ class DraftGeneratorService:
             image_duration_seconds: float,
             video_title: str,
             output_dir: str,
+            srt_path: Optional[str] = None,  # 添加字幕文件路径参数
             enable_transitions: bool = True,
             enable_effects: bool = True,
             enable_keyframes: bool = True,  # 默认启用关键帧
@@ -279,6 +280,13 @@ class DraftGeneratorService:
         # 设置随机种子
         if random_seed is not None:
             random.seed(random_seed)
+            print(f"使用固定随机种子: {random_seed}")
+        else:
+            # 使用当前时间作为随机种子，确保每次运行都不同
+            import time
+            current_seed = int(time.time() * 1000) % 2147483647
+            random.seed(current_seed)
+            print(f"使用随机种子: {current_seed} (基于当前时间)")
 
         print(f"\n{'=' * 60}")
         print(f"开始生成剪映草稿")
@@ -331,14 +339,18 @@ class DraftGeneratorService:
         
         # 检查并复制字幕文件
         subtitle_service = get_subtitle_service()
-        audio_dir = os.path.dirname(audio_path)
-        audio_name = Path(audio_path).stem
-        srt_path = os.path.join(audio_dir, f"{audio_name}.srt")
+        
+        # 如果没有传入srt_path参数，尝试查找默认的字幕文件
+        if not srt_path:
+            audio_dir = os.path.dirname(audio_path)
+            audio_name = Path(audio_path).stem
+            srt_path = os.path.join(audio_dir, f"{audio_name}.srt")
+        
         srt_dest = None
         
         # 验证字幕文件是否存在
         srt_file_path = None
-        if subtitle_service.validate_subtitle_file(audio_path):
+        if os.path.exists(srt_path) and subtitle_service.validate_subtitle_file(audio_path, srt_path):
             srt_filename = f"subtitle_{os.path.basename(srt_path)}"
             srt_dest = os.path.join(materials_dir, srt_filename)
             shutil.copy(srt_path, srt_dest)
@@ -435,11 +447,28 @@ class DraftGeneratorService:
         )
         materials.audios = [audio_material.to_dict()]
 
-        # 2. 创建视频素材（图片）
-        video_materials = []
+        # 2. 创建图片素材
+        video_materials = []  # 仍然用于后续的segments处理
         for i, image_path in enumerate(image_relative_paths):
+            material_id = gen_upper_uuid()
+            
+            # 创建图片素材字典（添加到images而不是videos）
+            image_material = {
+                "id": material_id,
+                "type": "photo",  # 图片类型应该是photo
+                "path": image_path,
+                "duration": image_duration_us,
+                "width": 1920,
+                "height": 1080,
+                "material_name": f"图片{i + 1}",
+                "crop_ratio": "free",
+                "crop_scale": 1.0
+            }
+            materials.images.append(image_material)
+            
+            # 为了兼容后续代码，创建一个简单的对象
             video_material = VideoMaterial(
-                id=gen_upper_uuid(),
+                id=material_id,
                 path=image_path,
                 duration=image_duration_us,
                 width=1920,
@@ -447,7 +476,6 @@ class DraftGeneratorService:
                 material_name=f"图片{i + 1}"
             )
             video_materials.append(video_material)
-            materials.videos.append(video_material.to_dict())
 
         # 3. 创建转场（如果启用）
         transitions = []
@@ -904,7 +932,7 @@ def generate_draft_from_story(cid: str, vid: str,
                              enable_effects: bool = True,
                              enable_keyframes: bool = True,  # 默认启用
                              image_scale: float = 1.8,  # 图片缩放比例
-                             random_seed: Optional[int] = 42):
+                             random_seed: Optional[int] = None):
     """
     根据故事ID生成剪映草稿
     
@@ -977,8 +1005,8 @@ def main():
                        help='禁用关键帧动画（默认启用）')
     parser.add_argument('--scale', type=float, default=1.8,
                        help='图片缩放比例，默认1.8')
-    parser.add_argument('--seed', type=int, default=42,
-                       help='随机种子，用于复现结果')
+    parser.add_argument('--seed', type=int, default=None,
+                       help='随机种子，用于复现结果（不设置则完全随机）')
     
     # 解析参数
     args = parser.parse_args()

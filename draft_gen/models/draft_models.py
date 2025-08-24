@@ -274,6 +274,7 @@ class Materials:
     videos: List[Dict[str, Any]] = field(default_factory=list)
     audios: List[Dict[str, Any]] = field(default_factory=list)
     texts: List[Dict[str, Any]] = field(default_factory=list)
+    images: List[Dict[str, Any]] = field(default_factory=list)  # 添加images字段
     canvases: List[Dict[str, Any]] = field(default_factory=list)
     transitions: List[Dict[str, Any]] = field(default_factory=list)
     video_effects: List[Dict[str, Any]] = field(default_factory=list)  # 添加视频特效
@@ -301,7 +302,7 @@ class Materials:
             "green_screens": [],
             "handwrites": [],
             "hsl": [],
-            "images": [],
+            "images": self.images,  # 使用实际的images列表
             "log_color_wheels": [],
             "loudnesses": [],
             "manual_deformations": [],

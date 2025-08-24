@@ -1,3 +1,4 @@
+# Core dependencies
 google-api-python-client>=2.100.0
 httplib2>=0.22.0
 retry>=0.9.2
@@ -6,4 +7,12 @@ youtube-transcript-api==1.1.1
 python-dotenv
 PySocks
 pydub
-pydantic
+
+# API dependencies
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+
+# Additional dependencies for pipeline
+aiofiles>=23.0.0
+python-multipart>=0.0.6
