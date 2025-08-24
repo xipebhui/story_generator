@@ -10,8 +10,22 @@ from typing import Optional, Dict, Any
 import asyncio
 import json
 import uuid
+import logging
+import os
 from datetime import datetime
 from pathlib import Path
+
+# 加载环境变量 - 必须在其他操作之前
+from config_loader import load_env_file
+load_env_file()
+
+# 配置日志
+log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+logging.basicConfig(
+    level=getattr(logging, log_level, logging.INFO),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Video Pipeline API", version="0.1.0")
 
@@ -47,10 +61,14 @@ tasks = {}  # 简单的内存存储
 
 async def run_pipeline_async(task_id: str, request: PipelineRequest):
     """异步运行pipeline"""
+    logger.info(f"[Task {task_id}] 开始执行Pipeline")
+    logger.debug(f"[Task {task_id}] 请求参数: video_id={request.video_id}, creator_id={request.creator_id}")
+    
     try:
         # 更新状态
         tasks[task_id]["status"] = "running"
         tasks[task_id]["current_stage"] = "初始化"
+        logger.debug(f"[Task {task_id}] 状态更新为: running")
         
         # 导入并运行pipeline
         from pipeline_core import VideoPipeline
@@ -66,8 +84,16 @@ async def run_pipeline_async(task_id: str, request: PipelineRequest):
             export_video=request.export_video
         )
         
+        # 检查环境变量
+        logger.debug(f"[Task {task_id}] 环境变量检查:")
+        logger.debug(f"  - DRAFT_LOCAL_DIR: {os.environ.get('DRAFT_LOCAL_DIR', 'Not Set')}")
+        logger.debug(f"  - EXPORT_VIDEO_URL: {os.environ.get('EXPORT_VIDEO_URL', 'Not Set')}")
+        logger.debug(f"  - LOG_LEVEL: {os.environ.get('LOG_LEVEL', 'Not Set')}")
+        
         # 创建pipeline实例
-        pipeline = VideoPipeline(core_request, verbose=True)
+        verbose = os.environ.get('LOG_LEVEL', 'INFO').upper() == 'DEBUG'
+        logger.debug(f"[Task {task_id}] 创建Pipeline实例, verbose={verbose}")
+        pipeline = VideoPipeline(core_request, verbose=verbose)
         
         # 更新阶段状态
         stages = ["故事二创", "语音生成", "剪映草稿生成"]
