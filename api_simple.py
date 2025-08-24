@@ -324,4 +324,4 @@ if __name__ == "__main__":
     print("按 Ctrl+C 停止服务器\n")
     
     # 直接运行时不使用reload，避免警告
-    uvicorn.run(app, host="0.0.0.0", port=8888)
+    uvicorn.run(app, host="0.0.0.0", port=51082)
