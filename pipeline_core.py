@@ -187,10 +187,12 @@ class VideoPipeline:
             status=response_status,
             video_id=self.request.video_id,
             creator_id=self.request.creator_id,
-            video_path=str(self.paths['video']) if self.paths['video'].exists() else None,
-            draft_path=str(self.paths['draft']) if self.paths['draft'].exists() else None,
-            audio_path=str(self.paths['audio']) if self.paths['audio'].exists() else None,
-            story_path=str(self.paths['story']) if self.paths['story'].exists() else None,
+            video_path=str(self.paths['video']) if self.paths.get('video') and self.paths['video'].exists() else None,
+            video_url=self.paths.get('video_url'),
+            preview_url=self.paths.get('preview_url'),
+            draft_path=str(self.paths['draft']) if self.paths.get('draft') and self.paths['draft'].exists() else None,
+            audio_path=str(self.paths['audio']) if self.paths.get('audio') and self.paths['audio'].exists() else None,
+            story_path=str(self.paths['story']) if self.paths.get('story') and self.paths['story'].exists() else None,
             content_report=reports.get('content') if 'reports' in locals() else None,
             youtube_suggestions=reports.get('youtube') if 'reports' in locals() else None,
             report_file_paths=reports.get('file_paths', {}) if 'reports' in locals() else {},
@@ -663,11 +665,16 @@ class VideoPipeline:
     def _run_video_export(self) -> StageResult:
         """
         执行视频导出阶段
+        1. 导出视频
+        2. 移动到文件服务目录
+        3. 生成30秒预览视频
         
         Returns:
             StageResult: 执行结果
         """
         from export_video_simple import export_video
+        import shutil
+        import subprocess
         
         start_time = datetime.now()
         stage_result = StageResult(
@@ -690,15 +697,102 @@ class VideoPipeline:
             # 调用导出函数
             video_path = export_video(draft_name)
             
-            if video_path:
-                # 更新路径
-                self.paths['video'] = Path(video_path)
-                
-                stage_result.status = StageStatus.SUCCESS
-                stage_result.output_files = [video_path]
-                logger.info(f"[OK] 视频导出成功: {video_path}")
-            else:
+            if not video_path:
                 raise Exception("导出服务返回空路径")
+            
+            video_path = Path(video_path)
+            logger.info(f"[OK] 视频导出成功: {video_path}")
+            
+            # 获取文件服务配置
+            video_output_dir = os.environ.get('VIDEO_OUTPUT_DIR')
+            video_server_url = os.environ.get('VIDEO_SERVER_URL')
+            
+            output_files = [str(video_path)]
+            video_info = {'original': str(video_path)}
+            
+            if video_output_dir and video_server_url:
+                try:
+                    # 创建输出目录
+                    output_dir = Path(video_output_dir)
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    # 生成唯一文件名
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    video_filename = f"{self.request.creator_id}_{self.request.video_id}_{timestamp}.mp4"
+                    preview_filename = f"{self.request.creator_id}_{self.request.video_id}_{timestamp}_preview.mp4"
+                    
+                    # 目标路径
+                    target_video_path = output_dir / video_filename
+                    preview_video_path = output_dir / preview_filename
+                    
+                    # 1. 移动完整视频到文件服务目录
+                    logger.info(f"移动视频到文件服务目录: {target_video_path}")
+                    shutil.move(str(video_path), str(target_video_path))
+                    
+                    # 2. 生成30秒预览视频（使用ffmpeg）
+                    logger.info(f"生成30秒预览视频: {preview_video_path}")
+                    ffmpeg_cmd = [
+                        'ffmpeg',
+                        '-i', str(target_video_path),
+                        '-t', '30',  # 只取前30秒
+                        '-c:v', 'libx264',  # 视频编码
+                        '-preset', 'fast',  # 快速编码
+                        '-crf', '23',  # 质量参数
+                        '-c:a', 'aac',  # 音频编码
+                        '-b:a', '128k',  # 音频比特率
+                        '-movflags', '+faststart',  # 优化网络播放
+                        '-y',  # 覆盖输出文件
+                        str(preview_video_path)
+                    ]
+                    
+                    # 执行ffmpeg命令
+                    result = subprocess.run(
+                        ffmpeg_cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=600  # 2分钟超时，预览视频生成应该很快
+                    )
+                    
+                    if result.returncode != 0:
+                        logger.warning(f"生成预览视频失败: {result.stderr}")
+                        # 预览生成失败不影响主流程
+                    else:
+                        logger.info(f"[OK] 预览视频生成成功")
+                        output_files.append(str(preview_video_path))
+                    
+                    # 3. 构建访问URL
+                    video_url = f"{video_server_url}/{video_filename}"
+                    preview_url = f"{video_server_url}/{preview_filename}" if preview_video_path.exists() else None
+                    
+                    # 更新视频信息
+                    video_info = {
+                        'local_path': str(target_video_path),
+                        'video_url': video_url,
+                        'preview_url': preview_url,
+                        'video_filename': video_filename,
+                        'preview_filename': preview_filename if preview_url else None
+                    }
+                    
+                    # 更新路径
+                    self.paths['video'] = target_video_path
+                    self.paths['video_url'] = video_url
+                    self.paths['preview_url'] = preview_url
+                    
+                    logger.info(f"视频URL: {video_url}")
+                    if preview_url:
+                        logger.info(f"预览URL: {preview_url}")
+                    
+                except Exception as e:
+                    logger.error(f"处理视频文件失败: {e}")
+                    # 如果处理失败，仍然使用原始路径
+                    self.paths['video'] = video_path
+            else:
+                logger.warning("未配置VIDEO_OUTPUT_DIR或VIDEO_SERVER_URL，视频保留在原位置")
+                self.paths['video'] = video_path
+            
+            stage_result.status = StageStatus.SUCCESS
+            stage_result.output_files = output_files
+            stage_result.output = json.dumps(video_info, ensure_ascii=False)
             
         except Exception as e:
             stage_result.status = StageStatus.FAILED

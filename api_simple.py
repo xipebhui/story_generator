@@ -27,6 +27,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# 启动时打印环境变量状态
+logger.info("=" * 60)
+logger.info("API服务启动")
+logger.info(f"LOG_LEVEL: {log_level}")
+logger.info(f"DRAFT_LOCAL_DIR: {os.environ.get('DRAFT_LOCAL_DIR', 'Not Set')}")
+logger.info(f"EXPORT_VIDEO_URL: {os.environ.get('EXPORT_VIDEO_URL', 'Not Set')}")
+logger.info("=" * 60)
+
 app = FastAPI(title="Video Pipeline API", version="0.1.0")
 
 # ============ 数据模型 ============
@@ -174,7 +182,6 @@ async def run_pipeline_async(task_id: str, request: PipelineRequest):
             audio_path = str(audio_file)
         
         # 草稿路径从环境变量获取
-        import os
         draft_dir = os.environ.get('DRAFT_LOCAL_DIR')
         if draft_dir:
             # 查找最新的草稿文件夹
@@ -192,12 +199,30 @@ async def run_pipeline_async(task_id: str, request: PipelineRequest):
             for status in tasks[task_id]["progress"].values()
         )
         
+        # 获取视频URL（如果有）
+        video_url = None
+        preview_url = None
+        
+        # 如果启用了视频导出，检查是否有URL
+        if request.export_video and pipeline.stages_results:
+            for stage in pipeline.stages_results:
+                if stage.name == "视频导出" and stage.output:
+                    try:
+                        import json
+                        video_info = json.loads(stage.output)
+                        video_url = video_info.get('video_url')
+                        preview_url = video_info.get('preview_url')
+                    except:
+                        pass
+        
         # 更新任务结果
         tasks[task_id]["status"] = "completed" if all_success else "failed"
         tasks[task_id]["current_stage"] = None
         tasks[task_id]["result"] = {
             "youtube_metadata": youtube_metadata,
             "video_path": video_path or draft_path,  # 如果没有视频，返回草稿路径
+            "video_url": video_url,
+            "preview_url": preview_url,
             "draft_path": draft_path,
             "audio_path": audio_path,
             "story_path": story_path

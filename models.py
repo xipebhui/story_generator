@@ -103,6 +103,8 @@ class PipelineResponse(BaseModel):
     
     # 输出文件路径
     video_path: Optional[str] = Field(None, description="最终视频文件路径")
+    video_url: Optional[str] = Field(None, description="视频访问URL")
+    preview_url: Optional[str] = Field(None, description="30秒预览视频URL")
     draft_path: Optional[str] = Field(None, description="剪映草稿文件路径")
     audio_path: Optional[str] = Field(None, description="音频文件路径")
     story_path: Optional[str] = Field(None, description="故事文本路径")

@@ -37,13 +37,14 @@ def export_video(draft_name: str, export_url: Optional[str] = None) -> Optional[
     
     try:
         logger.info(f"正在导出草稿: {draft_name}")
+        logger.info("注意：视频导出可能需要较长时间（最长30分钟），请耐心等待...")
         logger.debug(f"API地址: {api_endpoint}")
         
         # 发送请求
         response = requests.post(
             api_endpoint,
             json=request_data,
-            timeout=300  # 5分钟超时
+            timeout=3600  # 30分钟超时
         )
         
         # 处理响应
@@ -63,7 +64,7 @@ def export_video(draft_name: str, export_url: Optional[str] = None) -> Optional[
             return None
             
     except requests.exceptions.Timeout:
-        logger.error("导出请求超时（5分钟）")
+        logger.error("导出请求超时（30分钟）")
         return None
     except requests.exceptions.ConnectionError:
         logger.error(f"无法连接到导出服务: {api_endpoint}")
