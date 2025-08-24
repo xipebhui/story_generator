@@ -686,6 +686,7 @@ class VideoPipeline:
         start_time = datetime.now()
         stage_result = StageResult(
             name="视频导出",
+            start_time=start_time,
             status=StageStatus.RUNNING
         )
         

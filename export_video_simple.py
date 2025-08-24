@@ -84,7 +84,7 @@ def test_export_service(export_url: Optional[str] = None) -> bool:
         服务可用返回True，否则返回False
     """
     if not export_url:
-        export_url = os.getenv("EXPORT_VIDEO_URL", "http://localhost:8080")
+        export_url = os.getenv("EXPORT_VIDEO_URL", "http://localhost:51053")
     
     test_endpoint = f"{export_url}/api/test"
     
