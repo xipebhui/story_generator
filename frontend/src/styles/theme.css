@@ -1,0 +1,407 @@
+/* 主题样式 - 美观的渐变和动画效果 */
+
+:root {
+  /* 主色调 */
+  --primary-color: #722ED1;
+  --success-color: #52C41A;
+  --warning-color: #FAAD14;
+  --error-color: #F5222D;
+  --info-color: #1890FF;
+  
+  /* 渐变色 */
+  --gradient-purple: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --gradient-pink: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  --gradient-green: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+  --gradient-blue: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  --gradient-orange: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+  --gradient-dark: linear-gradient(135deg, #30cfd0 0%, #330867 100%);
+  
+  /* 阴影 */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.16);
+  --shadow-xl: 0 12px 48px rgba(0, 0, 0, 0.2);
+  
+  /* 动画时长 */
+  --transition-fast: 0.2s;
+  --transition-normal: 0.3s;
+  --transition-slow: 0.5s;
+}
+
+/* 全局动画 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+@keyframes gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* 页面容器 */
+.page-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  padding: 24px;
+  animation: fadeIn 0.5s ease-out;
+}
+
+/* 卡片样式 */
+.beautiful-card {
+  background: white;
+  border-radius: 16px;
+  box-shadow: var(--shadow-md);
+  transition: all var(--transition-normal) ease;
+  overflow: hidden;
+}
+
+.beautiful-card:hover {
+  box-shadow: var(--shadow-xl);
+  transform: translateY(-4px);
+}
+
+/* 工作流卡片 */
+.workflow-card {
+  position: relative;
+  padding: 24px;
+  background: white;
+  border-radius: 16px;
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  transition: all var(--transition-normal) ease;
+  overflow: hidden;
+}
+
+.workflow-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--gradient-purple);
+  background-size: 200% 200%;
+  animation: gradient 3s ease infinite;
+}
+
+.workflow-card:hover {
+  transform: translateY(-8px);
+  box-shadow: var(--shadow-xl);
+}
+
+.workflow-card:hover::before {
+  height: 6px;
+}
+
+/* 任务卡片 */
+.task-card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-normal) ease;
+  border-left: 4px solid transparent;
+  animation: slideIn 0.3s ease-out;
+}
+
+.task-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateX(4px);
+}
+
+.task-card.status-pending {
+  border-left-color: #d9d9d9;
+}
+
+.task-card.status-running {
+  border-left-color: #1890ff;
+  background: linear-gradient(90deg, rgba(24, 144, 255, 0.05) 0%, white 100%);
+}
+
+.task-card.status-completed {
+  border-left-color: #52c41a;
+  background: linear-gradient(90deg, rgba(82, 196, 26, 0.05) 0%, white 100%);
+}
+
+.task-card.status-failed {
+  border-left-color: #ff4d4f;
+  background: linear-gradient(90deg, rgba(255, 77, 79, 0.05) 0%, white 100%);
+}
+
+/* 状态标签 */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.status-badge.pending {
+  background: #f0f0f0;
+  color: #8c8c8c;
+}
+
+.status-badge.running {
+  background: #e6f7ff;
+  color: #1890ff;
+  position: relative;
+}
+
+.status-badge.running::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 6px;
+  background: #1890ff;
+  border-radius: 50%;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.status-badge.completed {
+  background: #f6ffed;
+  color: #52c41a;
+}
+
+.status-badge.failed {
+  background: #fff2f0;
+  color: #ff4d4f;
+}
+
+/* 进度条美化 */
+.beautiful-progress {
+  position: relative;
+  background: #f0f2f5;
+  border-radius: 8px;
+  overflow: hidden;
+  height: 8px;
+}
+
+.beautiful-progress .ant-progress-inner {
+  border-radius: 8px !important;
+}
+
+.beautiful-progress .ant-progress-bg {
+  background: var(--gradient-blue) !important;
+  animation: gradient 3s ease infinite;
+  background-size: 200% 200%;
+}
+
+/* 按钮美化 */
+.gradient-button {
+  position: relative;
+  background: var(--gradient-purple);
+  background-size: 200% 200%;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 24px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-normal) ease;
+  animation: gradient 3s ease infinite;
+}
+
+.gradient-button:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  color: white;
+}
+
+.gradient-button:active {
+  transform: translateY(0);
+}
+
+/* 浮动按钮 */
+.float-button {
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
+  width: 56px;
+  height: 56px;
+  background: var(--gradient-purple);
+  background-size: 200% 200%;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  box-shadow: var(--shadow-lg);
+  transition: all var(--transition-normal) ease;
+  animation: float 3s ease-in-out infinite;
+  z-index: 1000;
+}
+
+.float-button:hover {
+  transform: scale(1.1);
+  box-shadow: var(--shadow-xl);
+  animation-play-state: paused;
+}
+
+/* 标题样式 */
+.page-title {
+  font-size: 32px;
+  font-weight: 700;
+  background: var(--gradient-purple);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 24px;
+  animation: fadeIn 0.6s ease-out;
+}
+
+.section-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 16px;
+  position: relative;
+  padding-left: 12px;
+}
+
+.section-title::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 20px;
+  background: var(--gradient-purple);
+  border-radius: 2px;
+}
+
+/* 空状态 */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #8c8c8c;
+}
+
+.empty-state-icon {
+  font-size: 64px;
+  color: #d9d9d9;
+  margin-bottom: 16px;
+}
+
+.empty-state-text {
+  font-size: 16px;
+  margin-bottom: 24px;
+}
+
+/* 加载动画 */
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 300px;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #722ed1;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .page-container {
+    padding: 16px;
+  }
+  
+  .page-title {
+    font-size: 24px;
+  }
+  
+  .workflow-card {
+    padding: 16px;
+  }
+  
+  .float-button {
+    width: 48px;
+    height: 48px;
+    font-size: 20px;
+    bottom: 24px;
+    right: 24px;
+  }
+}
+
+/* 滚动条美化 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+}

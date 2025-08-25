@@ -5,12 +5,7 @@ export enum Gender {
   Female = 1,
 }
 
-export enum TaskStatus {
-  Pending = 'pending',
-  Running = 'running',
-  Completed = 'completed',
-  Failed = 'failed',
-}
+export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed';
 
 export enum StageStatus {
   Pending = '待处理',
@@ -55,6 +50,30 @@ export interface YouTubeMetadata {
 
 // 任务结果响应
 export interface TaskResultResponse {
+  task_id: string;
+  status: string;
+  youtube_metadata?: YouTubeMetadata;
+  video_path?: string;
+  video_url?: string;
+  preview_url?: string;
+  draft_path?: string;
+  audio_path?: string;
+  story_path?: string;
+  error?: string;
+}
+
+// 任务类型
+export interface Task {
+  task_id: string;
+  status: TaskStatus;
+  current_stage?: string | null;
+  progress?: Record<string, string>;
+  created_at: string;
+  completed_at?: string | null;
+}
+
+// 任务结果
+export interface TaskResult {
   task_id: string;
   status: string;
   youtube_metadata?: YouTubeMetadata;

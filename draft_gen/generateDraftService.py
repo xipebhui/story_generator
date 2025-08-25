@@ -255,6 +255,7 @@ class DraftGeneratorService:
             enable_transitions: bool = True,
             enable_effects: bool = True,
             enable_keyframes: bool = True,  # 默认启用关键帧
+            enable_subtitle: bool = False,  # 是否启用字幕（默认关闭，用于调试）
             image_scale: float = 1.8,  # 图片缩放比例
             random_seed: Optional[int] = None
     ) -> str:
@@ -337,26 +338,31 @@ class DraftGeneratorService:
         audio_relative_path = f"##_draftpath_placeholder_0E685133-18CE-45ED-8CB8-2904A212EC80_##/materials/{audio_filename}"
         print(f"复制音频: {os.path.basename(audio_path)}")
         
-        # 检查并复制字幕文件
-        subtitle_service = get_subtitle_service()
-        
-        # 如果没有传入srt_path参数，尝试查找默认的字幕文件
-        if not srt_path:
-            audio_dir = os.path.dirname(audio_path)
-            audio_name = Path(audio_path).stem
-            srt_path = os.path.join(audio_dir, f"{audio_name}.srt")
-        
-        srt_dest = None
-        
-        # 验证字幕文件是否存在
+        # 检查并复制字幕文件（只有启用字幕时才处理）
         srt_file_path = None
-        if os.path.exists(srt_path) and subtitle_service.validate_subtitle_file(audio_path, srt_path):
-            srt_filename = f"subtitle_{os.path.basename(srt_path)}"
-            srt_dest = os.path.join(materials_dir, srt_filename)
-            shutil.copy(srt_path, srt_dest)
-            print(f"复制字幕: {os.path.basename(srt_path)}")
-            # 保存原始srt路径用于后续处理
-            srt_file_path = srt_path
+        if enable_subtitle:
+            subtitle_service = get_subtitle_service()
+            
+            # 如果没有传入srt_path参数，尝试查找默认的字幕文件
+            if not srt_path:
+                audio_dir = os.path.dirname(audio_path)
+                audio_name = Path(audio_path).stem
+                srt_path = os.path.join(audio_dir, f"{audio_name}.srt")
+            
+            srt_dest = None
+            
+            # 验证字幕文件是否存在
+            if os.path.exists(srt_path) and subtitle_service.validate_subtitle_file(audio_path, srt_path):
+                srt_filename = f"subtitle_{os.path.basename(srt_path)}"
+                srt_dest = os.path.join(materials_dir, srt_filename)
+                shutil.copy(srt_path, srt_dest)
+                print(f"复制字幕: {os.path.basename(srt_path)}")
+                # 保存原始srt路径用于后续处理
+                srt_file_path = srt_path
+            else:
+                print(f"字幕文件不存在或无效，跳过字幕: {srt_path}")
+        else:
+            print("字幕功能已禁用（调试模式）")
 
         # 复制图片
         image_relative_paths = []
@@ -383,7 +389,8 @@ class DraftGeneratorService:
             enable_effects,
             enable_keyframes,
             image_scale,
-            srt_file_path  # 传递原始字幕文件路径（可能为None）
+            srt_file_path,  # 传递原始字幕文件路径（可能为None）
+            enable_subtitle  # 传递是否启用字幕的标志
         )
 
         # 9. 复制元信息文件
@@ -431,7 +438,8 @@ class DraftGeneratorService:
             enable_effects: bool,
             enable_keyframes: bool = True,  # 默认启用
             image_scale: float = 1.8,  # 图片缩放比例
-            srt_path: Optional[str] = None  # 字幕文件路径
+            srt_path: Optional[str] = None,  # 字幕文件路径
+            enable_subtitle: bool = False  # 是否启用字幕
     ) -> Draft:
         """创建草稿对象（内部方法）"""
 
@@ -447,26 +455,12 @@ class DraftGeneratorService:
         )
         materials.audios = [audio_material.to_dict()]
 
-        # 2. 创建图片素材
-        video_materials = []  # 仍然用于后续的segments处理
+        # 2. 创建图片素材（注意：剪映将图片存储在materials.videos中，type为"photo"）
+        video_materials = []
         for i, image_path in enumerate(image_relative_paths):
             material_id = gen_upper_uuid()
             
-            # 创建图片素材字典（添加到images而不是videos）
-            image_material = {
-                "id": material_id,
-                "type": "photo",  # 图片类型应该是photo
-                "path": image_path,
-                "duration": image_duration_us,
-                "width": 1920,
-                "height": 1080,
-                "material_name": f"图片{i + 1}",
-                "crop_ratio": "free",
-                "crop_scale": 1.0
-            }
-            materials.images.append(image_material)
-            
-            # 为了兼容后续代码，创建一个简单的对象
+            # 创建图片素材对象
             video_material = VideoMaterial(
                 id=material_id,
                 path=image_path,
@@ -476,6 +470,14 @@ class DraftGeneratorService:
                 material_name=f"图片{i + 1}"
             )
             video_materials.append(video_material)
+            
+            # 添加到materials.videos（剪映标准）
+            video_dict = video_material.to_dict()
+            video_dict["type"] = "photo"  # 设置类型为photo表示这是图片
+            video_dict["has_audio"] = False  # 图片没有音频
+            video_dict["crop_ratio"] = "free"
+            video_dict["crop_scale"] = 1.0
+            materials.videos.append(video_dict)
 
         # 3. 创建转场（如果启用）
         transitions = []
@@ -517,34 +519,53 @@ class DraftGeneratorService:
             )
             materials.video_effects.append(video_effect.to_dict())
 
-        # 5. 创建辅助素材
+        # 5. 创建辅助素材（只创建必要的数量，避免重复）
+        # 速度控制：每个segment需要一个
         for i in range(len(video_materials)):
             materials.speeds.append(SpeedInfo.create_speed_dict())
-            materials.canvases.append(CanvasInfo.create_canvas_dict())
-            materials.sound_channel_mappings.append({
-                "id": gen_upper_uuid(),
-                "audio_channel_mapping": 0,
-                "is_config_open": False,
-                "type": ""
-            })
-            materials.vocal_separations.append({
-                "id": gen_upper_uuid(),
-                "choice": 0,
-                "production_path": "",
-                "time_range": None,
-                "type": "vocal_separation"
-            })
+        
+        # Canvas：整个视频只需要一个
+        materials.canvases.append(CanvasInfo.create_canvas_dict())
+        
+        # 声道映射和人声分离：只需要2个（视频和音频轨道各一个）
+        materials.sound_channel_mappings.append({
+            "id": gen_upper_uuid(),
+            "audio_channel_mapping": 0,
+            "is_config_open": False,
+            "type": ""
+        })
+        materials.sound_channel_mappings.append({
+            "id": gen_upper_uuid(),
+            "audio_channel_mapping": 0,
+            "is_config_open": False,
+            "type": ""
+        })
+        materials.vocal_separations.append({
+            "id": gen_upper_uuid(),
+            "choice": 0,
+            "production_path": "",
+            "time_range": None,
+            "type": "vocal_separation"
+        })
+        materials.vocal_separations.append({
+            "id": gen_upper_uuid(),
+            "choice": 0,
+            "production_path": "",
+            "time_range": None,
+            "type": "vocal_separation"
+        })
 
-        # 添加素材动画
-        for _ in range(len(transitions)):
-            materials.material_animations.append(MaterialAnimationInfo.create_animation_dict())
+        # 素材动画：只有在使用转场时才需要
+        if enable_transitions and len(transitions) > 0:
+            for _ in range(len(transitions)):
+                materials.material_animations.append(MaterialAnimationInfo.create_animation_dict())
 
         # 6. 创建视频轨道
         video_track = Track(
             id=gen_upper_uuid(),
             type="video",
             segments=[],
-            attribute=1
+            attribute=0  # 改为0，标准视频轨道属性
         )
 
         # 创建视频片段
@@ -557,20 +578,23 @@ class DraftGeneratorService:
             # 计算片段时长
             segment_duration = min(image_duration_us, audio_duration_us - current_time)
 
-            # 创建额外引用
+            # 创建额外引用（只引用存在的素材）
             extra_refs = []
+            # 速度控制
             if i < len(materials.speeds):
                 extra_refs.append(materials.speeds[i]["id"])
-            if enable_transitions and i < len(transitions):
-                extra_refs.append(transitions[i].id)
-            if i < len(materials.canvases):
-                extra_refs.append(materials.canvases[i]["id"])
-            if i < len(materials.material_animations):
-                extra_refs.append(materials.material_animations[i]["id"])
-            if i < len(materials.sound_channel_mappings):
-                extra_refs.append(materials.sound_channel_mappings[i]["id"])
-            if i < len(materials.vocal_separations):
-                extra_refs.append(materials.vocal_separations[i]["id"])
+            # 转场（只在segment之间添加）
+            if enable_transitions and i > 0 and i - 1 < len(transitions):
+                extra_refs.append(transitions[i - 1].id)
+            # Canvas（所有segment共享同一个）
+            if len(materials.canvases) > 0:
+                extra_refs.append(materials.canvases[0]["id"])
+            # 声道映射（使用第一个）
+            if len(materials.sound_channel_mappings) > 0:
+                extra_refs.append(materials.sound_channel_mappings[0]["id"])
+            # 人声分离（使用第一个）  
+            if len(materials.vocal_separations) > 0:
+                extra_refs.append(materials.vocal_separations[0]["id"])
 
             # 创建片段
             video_segment = Segment(
@@ -613,8 +637,8 @@ class DraftGeneratorService:
             clip=None,
             extra_refs=[
                 materials.speeds[0]["id"] if materials.speeds else gen_upper_uuid(),
-                materials.sound_channel_mappings[0]["id"] if materials.sound_channel_mappings else gen_upper_uuid(),
-                materials.vocal_separations[0]["id"] if materials.vocal_separations else gen_upper_uuid()
+                materials.sound_channel_mappings[1]["id"] if len(materials.sound_channel_mappings) > 1 else gen_upper_uuid(),
+                materials.vocal_separations[1]["id"] if len(materials.vocal_separations) > 1 else gen_upper_uuid()
             ]
         )
         audio_track.segments.append(audio_segment)
@@ -641,8 +665,8 @@ class DraftGeneratorService:
             effect_track.segments.append(effect_segment)
             tracks.append(effect_track)
 
-        # 9. 处理字幕（如果提供了SRT文件）
-        if srt_path and os.path.exists(srt_path):
+        # 9. 处理字幕（如果启用并且提供了SRT文件）
+        if enable_subtitle and srt_path and os.path.exists(srt_path):
             print("添加字幕轨道...")
             subtitle_service = get_subtitle_service()
             
@@ -931,6 +955,7 @@ def generate_draft_from_story(cid: str, vid: str,
                              enable_transitions: bool = True,
                              enable_effects: bool = True,
                              enable_keyframes: bool = True,  # 默认启用
+                             enable_subtitle: bool = True,  # 默认启用字幕（向后兼容）
                              image_scale: float = 1.8,  # 图片缩放比例
                              random_seed: Optional[int] = None):
     """
@@ -977,6 +1002,7 @@ def generate_draft_from_story(cid: str, vid: str,
             enable_transitions=enable_transitions,
             enable_effects=enable_effects,
             enable_keyframes=enable_keyframes,
+            enable_subtitle=enable_subtitle,
             image_scale=image_scale,
             random_seed=random_seed
         )
@@ -1003,6 +1029,8 @@ def main():
                        help='禁用视频特效')
     parser.add_argument('--no-keyframes', action='store_true',
                        help='禁用关键帧动画（默认启用）')
+    parser.add_argument('--enable-subtitle', action='store_true',
+                       help='启用字幕（默认禁用，用于调试）')
     parser.add_argument('--scale', type=float, default=1.8,
                        help='图片缩放比例，默认1.8')
     parser.add_argument('--seed', type=int, default=None,
@@ -1020,6 +1048,7 @@ def main():
     print(f"转场效果: {'启用' if not args.no_transitions else '禁用'}")
     print(f"视频特效: {'启用' if not args.no_effects else '禁用'}")
     print(f"关键帧动画: {'启用' if not args.no_keyframes else '禁用'}")
+    print(f"字幕: {'启用' if args.enable_subtitle else '禁用'}")
     print(f"图片缩放比例: {args.scale}x")
     print(f"{'=' * 60}\n")
     
@@ -1032,6 +1061,7 @@ def main():
             enable_transitions=not args.no_transitions,
             enable_effects=not args.no_effects,
             enable_keyframes=not args.no_keyframes,  # 注意：使用 not args.no_keyframes
+            enable_subtitle=args.enable_subtitle,  # 默认False，需要显式启用
             image_scale=args.scale,
             random_seed=args.seed
         )

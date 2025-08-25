@@ -45,6 +45,7 @@ class PipelineRequest(BaseModel):
     duration: int = 60
     image_dir: Optional[str] = None
     export_video: bool = False
+    enable_subtitle: bool = False  # 是否启用字幕（默认禁用，用于调试）
 
 class TaskStatus(BaseModel):
     task_id: str

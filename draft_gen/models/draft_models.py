@@ -302,7 +302,7 @@ class Materials:
             "green_screens": [],
             "handwrites": [],
             "hsl": [],
-            "images": self.images,  # 使用实际的images列表
+            "images": [],  # 剪映标准中images应为空，图片存储在videos中
             "log_color_wheels": [],
             "loudnesses": [],
             "manual_deformations": [],

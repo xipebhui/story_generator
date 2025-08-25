@@ -598,6 +598,10 @@ class VideoPipeline:
         if self.request.image_dir:
             command.extend(["--image_dir", self.request.image_dir])
         
+        # 如果启用字幕，添加参数
+        if getattr(self.request, 'enable_subtitle', False):
+            command.append("--enable-subtitle")
+        
         result = self._run_command(command, "剪映草稿生成", timeout=600)
         
         # 处理生成的草稿文件

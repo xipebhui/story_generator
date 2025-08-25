@@ -1,0 +1,6 @@
+# Webtoon 下载器的最小依赖
+playwright==1.41.0
+httpx==0.25.2
+aiofiles==23.2.1
+loguru==0.7.2
+yaml

@@ -1,0 +1,60 @@
+# 漫画解说视频生成Pipeline配置文件
+
+gemini:
+  # API密钥从环境变量GEMINI_API_KEY读取
+  # api_key: "your-api-key-here"
+  model: "gemini-1.5-flash"
+  temperature: 0.7
+  max_output_tokens: 2048
+  timeout: 30
+
+tts:
+  service: "edge_tts"
+  voice: "zh-CN-XiaoxiaoNeural"  # 中文女声
+  rate: "+0%"  # 语速: -50% 到 +100%
+  pitch: "+0Hz"  # 音调: -20Hz 到 +20Hz
+  volume: "+0%"  # 音量: -50% 到 +100%
+  voice_alternatives:
+    female: "zh-CN-XiaoxiaoNeural"
+    male: "zh-CN-YunxiNeural"
+    child: "zh-CN-XiaoyiNeural"
+
+narration:
+  words_per_second: 2.5  # 每秒2.5个字（标准语速）
+  min_words_per_image: 30
+  max_words_per_image: 80
+  default_words_per_image: 50
+  transition_words:
+    - "接着"
+    - "随后"
+    - "与此同时"
+    - "这时"
+    - "突然"
+    - "紧接着"
+    - "片刻后"
+    - "不久"
+    - "正当"
+    - "就在这时"
+  narration_style: "生动活泼"  # 可选: 生动活泼, 严肃正式, 幽默风趣, 悬疑紧张
+  use_idioms: true
+  use_metaphors: true
+
+scene_durations:
+  action: [3, 5]      # 动作场景: 3-5秒
+  dialog: [5, 8]      # 对话场景: 5-8秒
+  transition: [2, 3]  # 过渡场景: 2-3秒
+  climax: [8, 10]     # 高潮场景: 8-10秒
+  static: [3, 4]      # 静态场景: 3-4秒
+
+pipeline:
+  cache_enabled: true
+  cache_dir: ".cache/comic_pipeline"
+  parallel_processing: true
+  max_workers: 4
+  output_dir: "output/comic_videos"
+  keep_intermediate_files: true
+  max_retries: 3
+  retry_delay: 1.0
+
+# 路径配置
+prompts_dir: "prompts/comic"

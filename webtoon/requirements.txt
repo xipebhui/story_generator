@@ -1,0 +1,26 @@
+# Webtoon Comic Pipeline Dependencies
+
+# Webtoon Downloader
+playwright==1.41.0
+httpx==0.25.2
+aiofiles==23.2.1
+loguru==0.7.2
+
+# Configuration and Data Models
+pydantic>=2.0.0
+pyyaml>=6.0
+
+# AI and Processing
+python-dotenv>=1.0.0
+requests>=2.31.0
+
+# Audio Generation
+edge-tts>=6.1.0
+pydub>=0.25.0
+
+# Image Processing (optional, for optimization)
+Pillow>=10.0.0
+
+# Utilities
+typing_extensions>=4.0.0
+pathlib>=1.0.0
