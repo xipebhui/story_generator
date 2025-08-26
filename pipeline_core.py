@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Pipeline核心执行类
 负责协调和执行视频生成的三个阶段
@@ -14,6 +15,16 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 import asyncio
+import platform
+
+# Windows系统设置控制台编码为UTF-8
+if platform.system() == 'Windows':
+    import codecs
+    # 设置控制台代码页为UTF-8
+    os.system('chcp 65001 > nul 2>&1')
+    # 重新配置stdout和stderr使用UTF-8
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'replace')
+    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'replace')
 
 from models import (
     PipelineRequest,
@@ -245,24 +256,30 @@ class VideoPipeline:
         
         try:
             # 执行命令，实时捕获输出
-            # Windows系统使用系统默认编码，其他系统使用UTF-8
-            import platform
-            if platform.system() == 'Windows':
-                # Windows使用GBK或系统默认编码
-                import locale
-                system_encoding = locale.getpreferredencoding() or 'gbk'
-            else:
-                system_encoding = 'utf-8'
+            # Windows系统需要特殊处理编码
+            # 获取正确的子进程环境变量设置
+            try:
+                env = get_subprocess_encoding_env()
+            except NameError:
+                # 如果工具函数不可用，使用基本设置
+                import platform
+                env = os.environ.copy()
+                if platform.system() == 'Windows':
+                    env['PYTHONIOENCODING'] = 'utf-8'
+                    env['PYTHONUTF8'] = '1'
+            
+            encoding = 'utf-8'
             
             process = subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,  # 合并stderr到stdout
                 text=True,
-                encoding=system_encoding,
+                encoding=encoding,
                 errors='replace',  # 遇到无法解码的字符时替换而不是报错
                 bufsize=1,  # 行缓冲
-                universal_newlines=True
+                universal_newlines=True,
+                env=env  # 传递环境变量
             )
             
             # 实时读取输出
@@ -729,15 +746,14 @@ class VideoPipeline:
                     target_video_path = output_dir / video_filename
                     preview_video_path = output_dir / preview_filename
                     
-                    # 1. 移动完整视频到文件服务目录
-                    logger.info(f"移动视频到文件服务目录: {target_video_path}")
-                    shutil.move(str(video_path), str(target_video_path))
+                    # 1. 保留原始视频在原位置，不移动
+                    logger.info(f"原始视频保留在: {video_path}")
                     
-                    # 2. 生成30秒预览视频（使用ffmpeg）
-                    logger.info(f"生成30秒预览视频: {preview_video_path}")
+                    # 2. 生成30秒预览视频并保存到文件服务目录（使用ffmpeg）
+                    logger.info(f"生成30秒预览视频到文件服务目录: {preview_video_path}")
                     ffmpeg_cmd = [
                         'ffmpeg',
-                        '-i', str(target_video_path),
+                        '-i', str(video_path),  # 从原始视频路径读取
                         '-t', '30',  # 只取前30秒
                         '-c:v', 'libx264',  # 视频编码
                         '-preset', 'fast',  # 快速编码
@@ -749,11 +765,13 @@ class VideoPipeline:
                         str(preview_video_path)
                     ]
                     
-                    # 执行ffmpeg命令
+                    # 执行ffmpeg命令，使用UTF-8编码
                     result = subprocess.run(
                         ffmpeg_cmd,
                         capture_output=True,
                         text=True,
+                        encoding='utf-8',
+                        errors='replace',
                         timeout=600  # 2分钟超时，预览视频生成应该很快
                     )
                     
@@ -764,27 +782,24 @@ class VideoPipeline:
                         logger.info(f"[OK] 预览视频生成成功")
                         output_files.append(str(preview_video_path))
                     
-                    # 3. 构建访问URL
-                    video_url = f"{video_server_url}/{video_filename}"
+                    # 3. 构建访问URL（只有预览视频有URL）
                     preview_url = f"{video_server_url}/{preview_filename}" if preview_video_path.exists() else None
                     
                     # 更新视频信息
                     video_info = {
-                        'local_path': str(target_video_path),
-                        'video_url': video_url,
-                        'preview_url': preview_url,
-                        'video_filename': video_filename,
+                        'local_path': str(video_path),  # 原始视频的本地路径
+                        'video_url': None,  # 原始视频没有网络URL
+                        'preview_url': preview_url,  # 预览视频的网络URL
                         'preview_filename': preview_filename if preview_url else None
                     }
                     
                     # 更新路径
-                    self.paths['video'] = target_video_path
-                    self.paths['video_url'] = video_url
+                    self.paths['video'] = video_path  # 保持原始视频路径
                     self.paths['preview_url'] = preview_url
                     
-                    logger.info(f"视频URL: {video_url}")
+                    logger.info(f"原始视频本地路径: {video_path}")
                     if preview_url:
-                        logger.info(f"预览URL: {preview_url}")
+                        logger.info(f"预览视频URL: {preview_url}")
                     
                 except Exception as e:
                     logger.error(f"处理视频文件失败: {e}")

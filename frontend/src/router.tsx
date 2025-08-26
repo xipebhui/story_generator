@@ -1,22 +1,11 @@
 import React from 'react';
-import { createBrowserRouter, Navigate } from 'react-router-dom';
-import AppLayout from '@/components/Layout';
-import TaskCenter from '@/pages/TaskCenter';
+import { createBrowserRouter } from 'react-router-dom';
+import Dashboard from '@/pages/Dashboard';
 
 const router = createBrowserRouter([
   {
     path: '/',
-    element: <AppLayout />,
-    children: [
-      {
-        index: true,
-        element: <TaskCenter />,
-      },
-      {
-        path: 'tasks',
-        element: <TaskCenter />,
-      },
-    ],
+    element: <Dashboard />,
   },
 ]);
 

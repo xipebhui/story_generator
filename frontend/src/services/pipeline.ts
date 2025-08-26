@@ -1,91 +1,58 @@
 // Pipeline API服务
 import api from './api';
-import {
-  PipelineRequest,
-  TaskStatusResponse,
-  TaskResultResponse,
-  TaskListResponse,
-  PublishRequest,
-  PublishHistoryItem,
-} from '@/types/task';
-import { CreateTaskResponse } from '@/types/api';
+import { CreateTaskResponse, PipelineRequest } from '../types/api';
+import { Task, TaskResult, TaskStatus } from '../types/task';
+
+interface TaskStatusResponse {
+  task_id: string;
+  status: TaskStatus;
+  current_stage: string | null;
+  progress: Record<string, string>;
+  created_at: string;
+  completed_at: string | null;
+}
+
+interface TaskListResponse {
+  total: number;
+  tasks: Task[];
+}
 
 class PipelineService {
-  // ============ 已实现的API ============
-  
   // 创建任务
-  async createTask(request: PipelineRequest): Promise<CreateTaskResponse> {
-    return api.post('/pipeline/run', request);
+  async runPipeline(request: PipelineRequest): Promise<CreateTaskResponse> {
+    const response = await api.post('/pipeline/run', request);
+    return response.data || response;
   }
 
   // 获取任务状态
-  async getTaskStatus(taskId: string): Promise<TaskStatusResponse> {
-    return api.get(`/pipeline/status/${taskId}`);
+  async getStatus(taskId: string): Promise<TaskStatusResponse> {
+    const response = await api.get(`/pipeline/status/${taskId}`);
+    return response.data || response;
   }
 
   // 获取任务结果
-  async getTaskResult(taskId: string): Promise<TaskResultResponse> {
-    return api.get(`/pipeline/result/${taskId}`);
+  async getResult(taskId: string): Promise<TaskResult> {
+    const response = await api.get(`/pipeline/result/${taskId}`);
+    return response.data || response;
   }
 
   // 获取任务列表
-  async getTaskList(): Promise<TaskListResponse> {
-    return api.get('/pipeline/tasks');
+  async listTasks(): Promise<TaskListResponse> {
+    const response = await api.get('/pipeline/tasks');
+    return response.data || response;
   }
 
   // 清空所有任务（测试用）
   async clearTasks(): Promise<{ message: string }> {
-    return api.delete('/pipeline/clear');
+    const response = await api.delete('/pipeline/clear');
+    return response.data || response;
   }
 
-  // ============ 预留的API（未实现） ============
-  
-  // 发布视频
-  async publishVideo(request: PublishRequest): Promise<any> {
-    // TODO: 实现发布视频API
-    console.warn('publishVideo API not implemented yet');
-    return Promise.resolve({
-      success: false,
-      message: '发布功能尚未实现',
-    });
-  }
-
-  // 获取发布历史
-  async getPublishHistory(): Promise<PublishHistoryItem[]> {
-    // TODO: 实现获取发布历史API
-    console.warn('getPublishHistory API not implemented yet');
-    return Promise.resolve([]);
-  }
-
-  // 更新发布计划
-  async updatePublishSchedule(id: string, schedule: any): Promise<any> {
-    // TODO: 实现更新发布计划API
-    console.warn('updatePublishSchedule API not implemented yet');
-    return Promise.resolve({
-      success: false,
-      message: '更新发布计划功能尚未实现',
-    });
-  }
-
-  // 删除任务
-  async deleteTask(taskId: string): Promise<any> {
-    // TODO: 实现删除任务API
-    console.warn('deleteTask API not implemented yet');
-    return Promise.resolve({
-      success: false,
-      message: '删除任务功能尚未实现',
-    });
-  }
-
-  // 重试任务
-  async retryTask(taskId: string): Promise<any> {
-    // TODO: 实现重试任务API
-    console.warn('retryTask API not implemented yet');
-    return Promise.resolve({
-      success: false,
-      message: '重试任务功能尚未实现',
-    });
+  // 健康检查
+  async healthCheck(): Promise<any> {
+    const response = await api.get('/health');
+    return response.data || response;
   }
 }
 
-export default new PipelineService();
+export const pipelineService = new PipelineService();

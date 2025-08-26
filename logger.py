@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 日志工具
 """
 
 import logging
 import os
+import sys
+import platform
 from datetime import datetime
 import config
 
@@ -28,7 +31,14 @@ def get_logger(name: str) -> logging.Logger:
     log_level = getattr(logging, config.LOG_LEVEL.upper(), logging.INFO)
     logger.setLevel(log_level)
     
-    # 创建控制台处理器
+    # 创建控制台处理器，Windows需要特殊处理
+    if platform.system() == 'Windows':
+        # Windows下强制使用UTF-8编码的流
+        import codecs
+        # 重新配置stdout和stderr使用UTF-8
+        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'replace')
+        sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'replace')
+    
     console_handler = logging.StreamHandler()
     console_handler.setLevel(log_level)
     

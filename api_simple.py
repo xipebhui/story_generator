@@ -1,8 +1,22 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 简化版Pipeline API服务器
 提供最小可用的异步API接口
 """
+
+import os
+import sys
+import platform
+
+# Windows系统设置控制台编码为UTF-8
+if platform.system() == 'Windows':
+    import codecs
+    # 设置控制台代码页为UTF-8
+    os.system('chcp 65001 > nul 2>&1')
+    # 重新配置stdout和stderr使用UTF-8
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'replace')
+    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'replace')
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from pydantic import BaseModel
@@ -11,7 +25,6 @@ import asyncio
 import json
 import uuid
 import logging
-import os
 from datetime import datetime
 from pathlib import Path
 
@@ -45,7 +58,7 @@ class PipelineRequest(BaseModel):
     duration: int = 60
     image_dir: Optional[str] = None
     export_video: bool = False
-    enable_subtitle: bool = False  # 是否启用字幕（默认禁用，用于调试）
+    enable_subtitle: bool = True  # 是否启用字幕（默认启用）
 
 class TaskStatus(BaseModel):
     task_id: str
@@ -59,7 +72,9 @@ class TaskResult(BaseModel):
     task_id: str
     status: str
     youtube_metadata: Optional[Dict[str, Any]] = None
-    video_path: Optional[str] = None
+    video_path: Optional[str] = None  # 原始视频的本地路径
+    video_url: Optional[str] = None  # 原始视频URL（现在为None）
+    preview_url: Optional[str] = None  # 30秒预览视频的网络URL
     draft_path: Optional[str] = None
     audio_path: Optional[str] = None
     story_path: Optional[str] = None
@@ -90,7 +105,8 @@ async def run_pipeline_async(task_id: str, request: PipelineRequest):
             gender=Gender(request.gender),
             duration=request.duration,
             image_dir=request.image_dir,
-            export_video=request.export_video
+            export_video=request.export_video,
+            enable_subtitle=request.enable_subtitle
         )
         
         # 检查环境变量
@@ -157,15 +173,30 @@ async def run_pipeline_async(task_id: str, request: PipelineRequest):
         # 读取YouTube元数据
         youtube_metadata = None
         youtube_file = Path(f"./story_result/{request.creator_id}/{request.video_id}/final/youtube_metadata.json")
+        logger.debug(f"[Task {task_id}] 检查YouTube元数据文件: {youtube_file}")
+        
         if youtube_file.exists():
+            logger.debug(f"[Task {task_id}] YouTube元数据文件存在，开始读取...")
             try:
                 with open(youtube_file, 'r', encoding='utf-8') as f:
                     youtube_metadata = json.load(f)
+                    logger.debug(f"[Task {task_id}] 成功读取YouTube元数据，包含 {len(youtube_metadata) if youtube_metadata else 0} 个字段")
                     # 移除不需要的strategy字段
                     if youtube_metadata and 'strategy' in youtube_metadata:
                         del youtube_metadata['strategy']
+                        logger.debug(f"[Task {task_id}] 已移除strategy字段")
             except Exception as e:
-                print(f"读取YouTube元数据失败: {e}")
+                logger.error(f"[Task {task_id}] 读取YouTube元数据失败: {e}")
+                logger.exception("详细错误:")
+        else:
+            logger.warning(f"[Task {task_id}] YouTube元数据文件不存在: {youtube_file}")
+            # 检查目录是否存在
+            parent_dir = youtube_file.parent
+            if parent_dir.exists():
+                logger.debug(f"[Task {task_id}] 目录存在: {parent_dir}")
+                logger.debug(f"[Task {task_id}] 目录内容: {list(parent_dir.glob('*'))}")
+            else:
+                logger.warning(f"[Task {task_id}] 目录不存在: {parent_dir}")
         
         # 构建文件路径
         video_path = None
@@ -200,30 +231,35 @@ async def run_pipeline_async(task_id: str, request: PipelineRequest):
             for status in tasks[task_id]["progress"].values()
         )
         
-        # 获取视频URL（如果有）
+        # 获取视频路径和URL（如果有）
         video_url = None
         preview_url = None
+        local_video_path = None
         
-        # 如果启用了视频导出，检查是否有URL
+        # 如果启用了视频导出，检查是否有视频文件
         if request.export_video and pipeline.stages_results:
             for stage in pipeline.stages_results:
                 if stage.name == "视频导出" and stage.output:
                     try:
-                        import json
                         video_info = json.loads(stage.output)
-                        video_url = video_info.get('video_url')
-                        preview_url = video_info.get('preview_url')
-                    except:
-                        pass
+                        local_video_path = video_info.get('local_path')  # 原始视频的本地路径
+                        video_url = video_info.get('video_url')  # 现在应该是None
+                        preview_url = video_info.get('preview_url')  # 预览视频的URL
+                        
+                        # 如果有本地视频路径，使用它
+                        if local_video_path and Path(local_video_path).exists():
+                            video_path = local_video_path
+                    except Exception as e:
+                        logger.warning(f"解析视频导出信息失败: {e}")
         
         # 更新任务结果
         tasks[task_id]["status"] = "completed" if all_success else "failed"
         tasks[task_id]["current_stage"] = None
         tasks[task_id]["result"] = {
             "youtube_metadata": youtube_metadata,
-            "video_path": video_path or draft_path,  # 如果没有视频，返回草稿路径
-            "video_url": video_url,
-            "preview_url": preview_url,
+            "video_path": video_path,  # 原始视频的本地路径
+            "video_url": video_url,  # 现在应该为None（原始视频没有URL）
+            "preview_url": preview_url,  # 30秒预览视频的网络URL
             "draft_path": draft_path,
             "audio_path": audio_path,
             "story_path": story_path
@@ -314,6 +350,8 @@ async def get_result(task_id: str):
         status=task["status"],
         youtube_metadata=result_data.get("youtube_metadata"),
         video_path=result_data.get("video_path"),
+        video_url=result_data.get("video_url"),
+        preview_url=result_data.get("preview_url"),
         draft_path=result_data.get("draft_path"),
         audio_path=result_data.get("audio_path"),
         story_path=result_data.get("story_path"),

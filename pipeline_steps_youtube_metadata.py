@@ -312,18 +312,23 @@ Story Excerpt (first 1000 chars):
             final_dir.mkdir(parents=True, exist_ok=True)
             
             # 保存JSON格式
-            with open(final_dir / "youtube_metadata.json", 'w', encoding='utf-8') as f:
+            json_file = final_dir / "youtube_metadata.json"
+            logger.debug(f"保存YouTube元数据到: {json_file}")
+            
+            with open(json_file, 'w', encoding='utf-8') as f:
                 json.dump(metadata, f, ensure_ascii=False, indent=2)
             
             # 保存人类可读的格式
             readable_content = self._format_readable_metadata(metadata)
-            with open(final_dir / "youtube_metadata.md", 'w', encoding='utf-8') as f:
+            md_file = final_dir / "youtube_metadata.md"
+            with open(md_file, 'w', encoding='utf-8') as f:
                 f.write(readable_content)
             
-            logger.info(f"💾 YouTube元数据已保存")
+            logger.info(f"💾 YouTube元数据已保存: {json_file}")
             
         except Exception as e:
-            logger.warning(f"Failed to save metadata: {e}")
+            logger.error(f"Failed to save YouTube metadata: {e}")
+            logger.exception("详细错误:")
     
     def _format_readable_metadata(self, metadata: Dict) -> str:
         """格式化为可读的Markdown"""

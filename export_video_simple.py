@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 简化的视频导出模块
 只负责调用剪映导出API

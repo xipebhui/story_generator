@@ -8,19 +8,20 @@
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/api_simple.py" beforeDir="false" afterPath="$PROJECT_DIR$/api_simple.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/draft_gen/generateDraftService.py" beforeDir="false" afterPath="$PROJECT_DIR$/draft_gen/generateDraftService.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/draft_gen/models/draft_models.py" beforeDir="false" afterPath="$PROJECT_DIR$/draft_gen/models/draft_models.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/export_video_simple.py" beforeDir="false" afterPath="$PROJECT_DIR$/export_video_simple.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/package.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/App.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/Layout/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/Layout/index.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/Create/index.tsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/Monitor/index.tsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/Publish/index.tsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/TaskDetail/index.tsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/Tasks/index.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/config/workflows.ts" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/router.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/router.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/types/api.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/types/api.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/types/task.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/types/task.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/services/pipeline.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/services/pipeline.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/vite.config.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/vite.config.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/logger.py" beforeDir="false" afterPath="$PROJECT_DIR$/logger.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/models.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/pipeline_core.py" beforeDir="false" afterPath="$PROJECT_DIR$/pipeline_core.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pipeline_steps_youtube_metadata.py" beforeDir="false" afterPath="$PROJECT_DIR$/pipeline_steps_youtube_metadata.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/start_all.sh" beforeDir="false" afterPath="$PROJECT_DIR$/start_all.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/story_pipeline_v3_runner.py" beforeDir="false" afterPath="$PROJECT_DIR$/story_pipeline_v3_runner.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -267,7 +268,15 @@
       <option name="project" value="LOCAL" />
       <updated>1756056469417</updated>
     </task>
-    <option name="localTasksCounter" value="24" />
+    <task id="LOCAL-00024" summary="增加超时设置">
+      <option name="closed" value="true" />
+      <created>1756139641369</created>
+      <option name="number" value="00024" />
+      <option name="presentableId" value="LOCAL-00024" />
+      <option name="project" value="LOCAL" />
+      <updated>1756139641369</updated>
+    </task>
+    <option name="localTasksCounter" value="25" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">

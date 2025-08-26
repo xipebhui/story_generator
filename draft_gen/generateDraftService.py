@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 剪映草稿生成服务
 综合音频、多图片、转场和特效的完整草稿生成服务
@@ -6,6 +7,7 @@
 
 import os
 import sys
+import platform
 import json
 import shutil
 import random
@@ -14,6 +16,15 @@ import zipfile
 import logging
 from typing import List, Optional
 from pathlib import Path
+
+# Windows系统设置控制台编码为UTF-8
+if platform.system() == 'Windows':
+    import codecs
+    # 设置控制台代码页为UTF-8
+    os.system('chcp 65001 > nul 2>&1')
+    # 重新配置stdout和stderr使用UTF-8
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'replace')
+    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'replace')
 
 # 添加项目根目录到Python路径
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -47,8 +58,18 @@ import uuid
 # 配置日志
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
 )
+
+# Windows系统特别处理日志编码
+if platform.system() == 'Windows':
+    for handler in logging.root.handlers:
+        if isinstance(handler, logging.StreamHandler):
+            handler.stream = sys.stdout
+
 logger = logging.getLogger(__name__)
 
 

@@ -7,10 +7,20 @@ Story Pipeline V3 Runner - 严格模式Pipeline运行器
 
 import os
 import sys
+import platform
 import logging
 from pathlib import Path
 from typing import Optional
 import json
+
+# Windows系统设置控制台编码为UTF-8
+if platform.system() == 'Windows':
+    import codecs
+    # 设置控制台代码页为UTF-8
+    os.system('chcp 65001 > nul 2>&1')
+    # 重新配置stdout和stderr使用UTF-8
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'replace')
+    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'replace')
 
 # 添加项目根目录到系统路径
 project_root = Path(__file__).parent
@@ -55,10 +65,17 @@ logging.basicConfig(
     format='%(asctime)s [%(levelname)s] %(name)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
     handlers=[
-        logging.StreamHandler(),
+        logging.StreamHandler(sys.stdout),
         logging.FileHandler('pipeline_v3.log', encoding='utf-8')
     ]
 )
+
+# Windows系统特别处理日志编码
+if platform.system() == 'Windows':
+    for handler in logging.root.handlers:
+        if isinstance(handler, logging.StreamHandler):
+            handler.stream = sys.stdout
+
 logger = logging.getLogger(__name__)
 
 

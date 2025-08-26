@@ -43,7 +43,7 @@ class PipelineRequest(BaseModel):
     duration: int = Field(120, ge=30, le=600, description="每张图片展示时长(秒)")
     image_dir: Optional[str] = Field(None, description="图库目录路径")
     export_video: bool = Field(False, description="是否导出视频文件")
-    enable_subtitle: bool = Field(False, description="是否启用字幕（默认禁用，用于调试）")
+    enable_subtitle: bool = Field(True, description="是否启用字幕（默认启用）")
     
     @validator('video_id')
     def validate_video_id(cls, v):
