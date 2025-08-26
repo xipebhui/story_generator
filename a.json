@@ -1,0 +1,171 @@
+{
+  "export_time": "2025-08-27T01:28:56.292737",
+  "account_count": 15,
+  "accounts": [
+    {
+      "account_id": "yt_009_novel_remote_1",
+      "account_name": "youtube-009-小说-远端_1",
+      "profile_id": "609c4b20df3149209eebeea474a2d7c2",
+      "channel_url": null,
+      "window_number": "1974",
+      "description": "窗口序号: 1974",
+      "is_active": true,
+      "created_at": "2025-08-26T15:50:58",
+      "updated_at": null
+    },
+    {
+      "account_id": "yt_010_novel",
+      "account_name": "youtube-010-小说",
+      "profile_id": "34f2833b44dc46f9a1645cc364647ed1",
+      "channel_url": null,
+      "window_number": "1973",
+      "description": "窗口序号: 1973",
+      "is_active": true,
+      "created_at": "2025-08-26T15:50:58",
+      "updated_at": null
+    },
+    {
+      "account_id": "yt_009_novel",
+      "account_name": "youtube-009-小说",
+      "profile_id": "73438dd4924c4a11a970ed647f88404d",
+      "channel_url": null,
+      "window_number": "1972",
+      "description": "窗口序号: 1972",
+      "is_active": true,
+      "created_at": "2025-08-26T15:50:58",
+      "updated_at": null
+    },
+    {
+      "account_id": "yt_008_novel_1",
+      "account_name": "youtube-008-小说_1",
+      "profile_id": "e6015e07704b43dbbb656ca71f203a42",
+      "channel_url": null,
+      "window_number": "1971",
+      "description": "窗口序号: 1971",
+      "is_active": true,
+      "created_at": "2025-08-26T15:50:58",
+      "updated_at": null
+    },
+    {
+      "account_id": "yt_007_deprecated",
+      "account_name": "youtube-007-废了",
+      "profile_id": "44810ff5155b41129a2884a5ebbb7ae8",
+      "channel_url": null,
+      "window_number": "1970",
+      "description": "窗口序号: 1970",
+      "is_active": false,
+      "created_at": "2025-08-26T15:50:58",
+      "updated_at": null
+    },
+    {
+      "account_id": "yt_004_same",
+      "account_name": "youtube-004-一样的号",
+      "profile_id": "72a55bd4d9794c839dfbb8d6e4a4ef18",
+      "channel_url": null,
+      "window_number": "1969",
+      "description": "窗口序号: 1969",
+      "is_active": true,
+      "created_at": "2025-08-26T15:50:58",
+      "updated_at": null
+    },
+    {
+      "account_id": "yt_005_novel",
+      "account_name": "youtube-005-小说",
+      "profile_id": "b4281319094d40f09804ce5a55b86645",
+      "channel_url": null,
+      "window_number": "1968",
+      "description": "窗口序号: 1968",
+      "is_active": true,
+      "created_at": "2025-08-26T15:50:58",
+      "updated_at": null
+    },
+    {
+      "account_id": "yt_004_novel",
+      "account_name": "youtube-004-小说",
+      "profile_id": "901dfe74956c480bae42ba8178bbfe6a",
+      "channel_url": null,
+      "window_number": "1967",
+      "description": "窗口序号: 1967",
+      "is_active": true,
+      "created_at": "2025-08-26T15:50:58",
+      "updated_at": null
+    },
+    {
+      "account_id": "yt_0622",
+      "account_name": "0622",
+      "profile_id": "1d232a5b810046b09b913f658ed8e152",
+      "channel_url": null,
+      "window_number": "1966",
+      "description": "窗口序号: 1966",
+      "is_active": true,
+      "created_at": "2025-08-26T15:50:58",
+      "updated_at": null
+    },
+    {
+      "account_id": "yt_0624",
+      "account_name": "0624",
+      "profile_id": "b4137d12faf54446a43187307ed770dc",
+      "channel_url": null,
+      "window_number": "1965",
+      "description": "窗口序号: 1965",
+      "is_active": true,
+      "created_at": "2025-08-26T15:50:58",
+      "updated_at": null
+    },
+    {
+      "account_id": "yt_0623",
+      "account_name": "0623",
+      "profile_id": "c3127778f3a140c790be9d209ae57f62",
+      "channel_url": null,
+      "window_number": "1964",
+      "description": "窗口序号: 1964",
+      "is_active": true,
+      "created_at": "2025-08-26T15:50:58",
+      "updated_at": null
+    },
+    {
+      "account_id": "yt_1122",
+      "account_name": "1122",
+      "profile_id": "cbccb8ef8dc340f5bd77c37c665f45ab",
+      "channel_url": null,
+      "window_number": "1963",
+      "description": "窗口序号: 1963",
+      "is_active": true,
+      "created_at": "2025-08-26T15:50:58",
+      "updated_at": null
+    },
+    {
+      "account_id": "yt_003_novel",
+      "account_name": "youtube-003-小说",
+      "profile_id": "d9adfc1638fe4028be414c04ed9da3d5",
+      "channel_url": null,
+      "window_number": "1962",
+      "description": "窗口序号: 1962",
+      "is_active": true,
+      "created_at": "2025-08-26T15:50:58",
+      "updated_at": null
+    },
+    {
+      "account_id": "yt_002_novel",
+      "account_name": "youtube-002-小说",
+      "profile_id": "5ec48b6dd0e146708e0606042fd5bbbe",
+      "channel_url": null,
+      "window_number": "1961",
+      "description": "窗口序号: 1961",
+      "is_active": true,
+      "created_at": "2025-08-26T15:50:58",
+      "updated_at": null
+    },
+    {
+      "account_id": "yt_001_novel",
+      "account_name": "youtube-001-小说",
+      "profile_id": "1590cf235ecf4d66bf7e1f57242d520f",
+      "channel_url": null,
+      "window_number": "1960",
+      "description": "窗口序号: 1960",
+      "is_active": true,
+      "created_at": "2025-08-26T15:50:58",
+      "updated_at": null
+    }
+  ]
+}
