@@ -74,8 +74,8 @@ body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   font-size: 14px;
   line-height: 1.5;
-  color: var(--color-gray-800);
-  background: var(--color-gray-100);
+  color: var(--text-primary, var(--color-gray-800));
+  background: var(--bg-primary, var(--color-gray-100));
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -90,14 +90,13 @@ body {
 
 /* 现代化头部 */
 .modern-header {
-  background: var(--color-white);
-  border-bottom: 1px solid var(--color-gray-200);
+  background: var(--bg-secondary, var(--color-white));
+  border-bottom: 1px solid var(--border-color, var(--color-gray-200));
   padding: var(--spacing-lg) 0;
   position: sticky;
   top: 0;
   z-index: 100;
   backdrop-filter: blur(10px);
-  background: rgba(255, 255, 255, 0.95);
 }
 
 .modern-header-content {
@@ -112,7 +111,7 @@ body {
   gap: var(--spacing-md);
   font-size: 1.25rem;
   font-weight: 700;
-  color: var(--color-dark);
+  color: var(--text-primary, var(--color-dark));
 }
 
 .modern-logo-icon {
@@ -129,10 +128,10 @@ body {
 
 /* 统计卡片 - 大数字风格 */
 .stat-card {
-  background: var(--color-white);
+  background: var(--bg-card, var(--color-white));
   border-radius: var(--radius-xl);
   padding: var(--spacing-xl);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-color, var(--shadow-md));
   transition: var(--transition-base);
   position: relative;
   overflow: hidden;
@@ -163,7 +162,7 @@ body {
 
 .stat-card-label {
   font-size: 0.875rem;
-  color: var(--color-gray-600);
+  color: var(--text-secondary, var(--color-gray-600));
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-weight: 600;
@@ -191,14 +190,14 @@ body {
 
 /* 任务卡片 - 极简风格 */
 .task-item {
-  background: var(--color-white);
+  background: var(--bg-card, var(--color-white));
   border-radius: var(--radius-lg);
   padding: var(--spacing-lg);
   margin-bottom: var(--spacing-md);
   box-shadow: var(--shadow-xs);
   transition: var(--transition-base);
   cursor: pointer;
-  border: 1px solid var(--color-gray-200);
+  border: 1px solid var(--border-color, var(--color-gray-200));
 }
 
 .task-item:hover {
@@ -217,7 +216,7 @@ body {
 .task-item-title {
   font-size: 1rem;
   font-weight: 600;
-  color: var(--color-dark);
+  color: var(--text-primary, var(--color-dark));
 }
 
 .task-item-meta {
@@ -225,7 +224,7 @@ body {
   align-items: center;
   gap: var(--spacing-lg);
   font-size: 0.875rem;
-  color: var(--color-gray-600);
+  color: var(--text-secondary, var(--color-gray-600));
 }
 
 .task-item-progress {
@@ -234,7 +233,7 @@ body {
 
 .task-progress-bar {
   height: 6px;
-  background: var(--color-gray-200);
+  background: var(--border-color, var(--color-gray-200));
   border-radius: var(--radius-full);
   overflow: hidden;
   position: relative;
@@ -354,14 +353,14 @@ body {
 
 /* 工作流选择卡片 - 现代设计 */
 .workflow-select-card {
-  background: var(--color-white);
+  background: var(--bg-card, var(--color-white));
   border-radius: var(--radius-xl);
   padding: var(--spacing-2xl);
   box-shadow: var(--shadow-md);
   cursor: pointer;
   transition: var(--transition-base);
   text-align: center;
-  border: 2px solid transparent;
+  border: 2px solid var(--border-color, transparent);
 }
 
 .workflow-select-card:hover {
@@ -389,13 +388,13 @@ body {
 .workflow-select-title {
   font-size: 1.25rem;
   font-weight: 700;
-  color: var(--color-dark);
+  color: var(--text-primary, var(--color-dark));
   margin-bottom: var(--spacing-sm);
 }
 
 .workflow-select-desc {
   font-size: 0.875rem;
-  color: var(--color-gray-600);
+  color: var(--text-secondary, var(--color-gray-600));
   line-height: 1.5;
 }
 
@@ -407,20 +406,20 @@ body {
 
 .empty-state-icon {
   font-size: 4rem;
-  color: var(--color-gray-400);
+  color: var(--text-secondary, var(--color-gray-400));
   margin-bottom: var(--spacing-lg);
 }
 
 .empty-state-title {
   font-size: 1.5rem;
   font-weight: 700;
-  color: var(--color-dark);
+  color: var(--text-primary, var(--color-dark));
   margin-bottom: var(--spacing-sm);
 }
 
 .empty-state-desc {
   font-size: 1rem;
-  color: var(--color-gray-600);
+  color: var(--text-secondary, var(--color-gray-600));
   margin-bottom: var(--spacing-xl);
 }
 

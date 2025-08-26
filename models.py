@@ -39,6 +39,7 @@ class PipelineRequest(BaseModel):
     """Pipeline执行请求"""
     video_id: str = Field(..., description="YouTube视频ID")
     creator_id: str = Field(..., description="创作者ID")
+    account_name: Optional[str] = Field(None, description="发布账号名称")
     gender: Gender = Field(Gender.FEMALE, description="语音性别")
     duration: int = Field(120, ge=30, le=600, description="每张图片展示时长(秒)")
     image_dir: Optional[str] = Field(None, description="图库目录路径")

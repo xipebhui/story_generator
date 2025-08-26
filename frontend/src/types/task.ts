@@ -5,7 +5,7 @@ export enum Gender {
   Female = 1,
 }
 
-export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export enum StageStatus {
   Pending = '待处理',
@@ -34,18 +34,38 @@ export interface TaskStatusResponse {
   completed_at: string | null;
 }
 
-// YouTube元数据
+// YouTube元数据 - 支持新旧两种格式
 export interface YouTubeMetadata {
-  title: string;
-  description: string;
-  tags: string[];
-  category?: string;
-  thumbnail?: {
-    text: string;
-    style: string;
-    color_scheme: string;
-    emotion: string;
+  // 新格式
+  titles?: {
+    chinese: string[];
+    english: string[];
   };
+  descriptions?: {
+    chinese: string;
+    english: string;
+  };
+  tags?: {
+    chinese: string[];
+    english: string[];
+    mixed: string[];
+  } | string[]; // 兼容旧格式
+  thumbnail?: {
+    visual_focus?: string;
+    text_overlay?: {
+      chinese: string;
+      english: string;
+    };
+    color_scheme?: string;
+    emotion?: string;
+    // 兼容旧格式
+    text?: string;
+    style?: string;
+  };
+  // 旧格式兼容
+  title?: string;
+  description?: string;
+  category?: string;
 }
 
 // 任务结果响应
@@ -65,17 +85,28 @@ export interface TaskResultResponse {
 // 任务类型
 export interface Task {
   task_id: string;
+  workflow?: string;  // 工作流类型
   status: TaskStatus;
   current_stage?: string | null;
-  progress?: Record<string, string>;
+  progress?: number | Record<string, string>;  // 进度百分比或详细进度
   created_at: string;
   completed_at?: string | null;
+  duration?: number;  // 执行时长（秒） - 兼容旧字段
+  total_duration?: number;  // 执行时长（秒） - 新字段
+  error_message?: string;  // 错误信息
+  params?: any;  // 任务参数
+  stages?: Array<{  // 阶段信息
+    name: string;
+    status: string;
+    start_time?: string;
+    end_time?: string;
+  }>;
 }
 
 // 任务结果
 export interface TaskResult {
-  task_id: string;
-  status: string;
+  task_id?: string;
+  status?: string;
   youtube_metadata?: YouTubeMetadata;
   video_path?: string;
   video_url?: string;
@@ -89,9 +120,13 @@ export interface TaskResult {
 // 任务列表项
 export interface TaskListItem {
   task_id: string;
+  workflow?: string;
   status: string;
+  current_stage?: string;
+  progress?: number;
   created_at: string;
   completed_at?: string;
+  error_message?: string;
 }
 
 // 任务列表响应

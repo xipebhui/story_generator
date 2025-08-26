@@ -22,7 +22,7 @@ import sys
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 # 导入草稿生成服务
-from draft_gen.generateDraftService import DraftGeneratorService
+from draft_gen.comic_draft_generator import ComicDraftGenerator, AudioSegmentInfo
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class ComicVideoPipeline:
         self.image_analyzer = ImageAnalyzer(self.config)
         self.narration_generator = NarrationGenerator(self.config)
         self.audio_generator = AudioGenerator(self.config)
-        self.draft_generator = DraftGeneratorService()
+        self.comic_draft_generator = ComicDraftGenerator()
         
         # 设置日志
         self._setup_logging()
@@ -253,31 +253,36 @@ class ComicVideoPipeline:
         chapter_name: str
     ) -> str:
         """创建剪映草稿"""
-        # 准备图片列表
-        images_dir = Path(segments[0].image.path).parent
-        
         # 准备输出目录
         output_dir = self.config.get_output_path("drafts")
         
         # 生成SRT字幕文件
         srt_path = self._generate_srt_from_segments(segments, audio_file)
         
-        # 计算每张图片的显示时长
-        image_durations = [segment.duration for segment in segments]
-        avg_duration = sum(image_durations) / len(image_durations)
+        # 创建音频片段信息列表
+        audio_segments = []
+        current_time = 0.0
         
-        # 调用草稿生成服务（传入字幕文件）
-        draft_path = self.draft_generator.generate_draft(
-            images_dir=str(images_dir),
-            audio_path=audio_file,
-            srt_path=srt_path,  # 添加字幕文件路径
-            image_duration_seconds=avg_duration,
-            video_title=f"comic_{chapter_name}",
+        for i, segment in enumerate(segments):
+            audio_info = AudioSegmentInfo(
+                index=i,
+                audio_file=segment.audio_file or f"audio_{i:03d}.mp3",
+                duration=segment.duration,
+                start_time=current_time,
+                end_time=current_time + segment.duration,
+                image_file=segment.image.path,
+                narration_text=segment.text
+            )
+            audio_segments.append(audio_info)
+            current_time += segment.duration
+        
+        # 调用新的漫画草稿生成器
+        draft_path = self.comic_draft_generator.generate_comic_draft(
+            audio_segments=audio_segments,
+            merged_audio_path=audio_file,
             output_dir=str(output_dir),
-            enable_transitions=True,
-            enable_effects=False,
-            enable_keyframes=True,
-            image_scale=1.5
+            project_name=f"comic_{chapter_name}",
+            srt_path=srt_path
         )
         
         return draft_path

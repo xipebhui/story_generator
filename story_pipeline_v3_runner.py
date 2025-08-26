@@ -40,17 +40,7 @@ from pipeline_steps_v3 import (
 )
 from pipeline_steps_youtube_metadata import GenerateYouTubeMetadataStep
 
-# 尝试使用基于requests的客户端（对Windows + SOCKS5代理更友好）
-try:
-    from youtube_client_requests import YouTubeAPIClient
-    logger.info("使用基于requests的YouTube客户端（SOCKS5代理支持）")
-except ImportError:
-    from youtube_client import YouTubeAPIClient
-    logger.info("使用原始YouTube客户端")
-    
-from gemini_client import GeminiClient
-
-# 配置日志
+# 配置日志 - 必须在使用logger之前
 try:
     from utils.logging_config import setup_logging
     logger = setup_logging(
@@ -70,6 +60,16 @@ except ImportError:
         ]
     )
     logger = logging.getLogger(__name__)
+
+# 尝试使用基于requests的客户端（对Windows + SOCKS5代理更友好）
+try:
+    from youtube_client_requests import YouTubeAPIClient
+    logger.info("使用基于requests的YouTube客户端（SOCKS5代理支持）")
+except ImportError:
+    from youtube_client import YouTubeAPIClient
+    logger.info("使用原始YouTube客户端")
+    
+from gemini_client import GeminiClient
 
 
 class StrictPipeline(Pipeline):

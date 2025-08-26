@@ -12,3 +12,53 @@ story_v3/
 .env
 outputs/
 /frontend/node_modules/
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# 缩略图目录
+thumbnails/
+
+# 草稿文件
+drafts/
+output/drafts/
+
+# IDE配置
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# 测试文件
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 临时文件
+*.tmp
+*.bak
+*.backup
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+
+# 环境变量文件（包含敏感信息）
+.env.local
+.env.production
+.env.*.local

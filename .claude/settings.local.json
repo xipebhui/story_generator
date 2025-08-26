@@ -14,7 +14,8 @@
       "Bash(DRAFT_LOCAL_DIR=\"/Users/pengfei.shi/Documents/JianyingPro/Drafts\" python draft_gen/generateDraftService.py --cid bearreddit --vid Sley8EsoBKA --duration 300)",
       "Bash(pip install:*)",
       "Bash(timeout:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(chmod:*)"
     ],
     "deny": []
   }

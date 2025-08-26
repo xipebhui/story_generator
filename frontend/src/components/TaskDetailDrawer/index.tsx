@@ -14,7 +14,8 @@ import {
   Alert,
   Spin,
   message,
-  Empty
+  Empty,
+  Badge
 } from 'antd';
 import {
   CopyOutlined,
@@ -28,7 +29,10 @@ import {
   VideoCameraOutlined,
   YoutubeOutlined,
   TagsOutlined,
-  PictureOutlined
+  PictureOutlined,
+  CloudUploadOutlined,
+  GlobalOutlined,
+  TranslationOutlined
 } from '@ant-design/icons';
 import { Task, TaskResult } from '../../types/task';
 import { pipelineService } from '../../services/pipeline';
@@ -44,15 +48,19 @@ interface TaskDetailDrawerProps {
   visible: boolean;
   task: Task | null;
   onClose: () => void;
+  onPublish?: (task: Task) => void;
 }
 
 const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
   visible,
   task,
-  onClose
+  onClose,
+  onPublish
 }) => {
   const [result, setResult] = useState<TaskResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showChineseTitles, setShowChineseTitles] = useState(false);
+  const [showChineseDesc, setShowChineseDesc] = useState(false);
 
   // 加载任务结果
   useEffect(() => {
@@ -87,7 +95,7 @@ const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
       case 'pending':
         return <ClockCircleOutlined style={{ color: '#8c8c8c' }} />;
       case 'running':
-        return <SyncOutlined spin style={{ color: '#1890ff' }} />;
+        return <SyncOutlined style={{ color: '#1890ff' }} />;
       case 'completed':
         return <CheckCircleOutlined style={{ color: '#52c41a' }} />;
       case 'failed':
@@ -111,6 +119,22 @@ const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
   // 计算任务耗时
   const getTaskDuration = () => {
     if (!task) return '';
+    
+    // 优先使用后端返回的 total_duration 或 duration
+    if (task.total_duration || task.duration) {
+      const seconds = Math.round(task.total_duration || task.duration || 0);
+      const duration = dayjs.duration(seconds, 'seconds');
+      
+      if (duration.hours() > 0) {
+        return `${duration.hours()}小时${duration.minutes()}分钟${duration.seconds()}秒`;
+      } else if (duration.minutes() > 0) {
+        return `${duration.minutes()}分钟${duration.seconds()}秒`;
+      } else {
+        return `${seconds}秒`;
+      }
+    }
+    
+    // 如果没有 duration 字段，尝试通过时间差计算
     if (!task.completed_at) return '进行中...';
     
     const start = dayjs(task.created_at);
@@ -132,11 +156,26 @@ const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
   return (
     <Drawer
       title={
-        <Space>
-          {getStatusIcon(task.status)}
-          <span>任务详情</span>
-          <Tag color={getStatusColor(task.status)}>{task.status}</Tag>
-        </Space>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Space>
+            {getStatusIcon(task.status)}
+            <span>任务详情</span>
+            <Tag color={getStatusColor(task.status)}>{task.status}</Tag>
+          </Space>
+          {task.status === 'completed' && onPublish && (
+            <Button
+              type="primary"
+              icon={<CloudUploadOutlined />}
+              onClick={() => onPublish(task)}
+              style={{ 
+                background: 'linear-gradient(87deg, #2dce89 0, #2dcecc 100%)',
+                border: 'none'
+              }}
+            >
+              发布到YouTube
+            </Button>
+          )}
+        </div>
       }
       placement="right"
       width={720}
@@ -194,7 +233,7 @@ const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
                       'gray'
                     }
                     dot={
-                      status === '运行中' ? <SyncOutlined spin /> : undefined
+                      status === '运行中' ? <SyncOutlined /> : undefined
                     }
                   >
                     <Space>
@@ -222,6 +261,31 @@ const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
             </div>
           ) : result ? (
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
+              {/* 视频预览 */}
+              {result.preview_url && (
+                <Card title="视频预览" size="small">
+                  <div style={{ textAlign: 'center', marginBottom: 16 }}>
+                    <video 
+                      controls 
+                      style={{ width: '100%', maxWidth: '100%', borderRadius: 8 }}
+                      src={result.preview_url}
+                    >
+                      您的浏览器不支持视频播放
+                    </video>
+                  </div>
+                  <Space>
+                    <Text type="secondary">预览链接: </Text>
+                    <Text code>{result.preview_url}</Text>
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<CopyOutlined />}
+                      onClick={() => copyToClipboard(result.preview_url!, '预览链接')}
+                    />
+                  </Space>
+                </Card>
+              )}
+
               {/* 文件路径 */}
               <Card title="生成文件" size="small">
                 <Space direction="vertical" style={{ width: '100%' }}>
@@ -310,61 +374,171 @@ const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
           ) : result?.youtube_metadata ? (
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
               {/* 标题 */}
-              <Card title={<><YoutubeOutlined /> 标题</>} size="small">
-                <Paragraph
-                  copyable={{ text: result.youtube_metadata.title }}
-                  style={{ marginBottom: 0 }}
-                >
-                  {result.youtube_metadata.title}
-                </Paragraph>
+              <Card 
+                title={
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span><YoutubeOutlined /> 标题</span>
+                    {(result.youtube_metadata as any).titles?.chinese && (
+                      <Button 
+                        size="small" 
+                        onClick={() => setShowChineseTitles(!showChineseTitles)}
+                      >
+                        {showChineseTitles ? '显示英文' : '翻译中文'}
+                      </Button>
+                    )}
+                  </div>
+                } 
+                size="small"
+              >
+                {(() => {
+                  const metadata = result.youtube_metadata as any;
+                  if (!metadata || !metadata.titles) {
+                    return <Empty description="暂无标题数据" />;
+                  }
+                  
+                  const titles = showChineseTitles ? metadata.titles.chinese : metadata.titles.english;
+                  return (
+                    <Space direction="vertical" style={{ width: '100%' }}>
+                      {titles?.map((title: string, index: number) => (
+                        <div key={index} style={{ marginBottom: 8 }}>
+                          <Badge count={index + 1} style={{ backgroundColor: '#52c41a' }}>
+                            <Paragraph
+                              copyable={{ text: title }}
+                              style={{ marginBottom: 0, marginLeft: 8 }}
+                            >
+                              {title}
+                            </Paragraph>
+                          </Badge>
+                        </div>
+                      ))}
+                    </Space>
+                  );
+                })()}
               </Card>
 
               {/* 描述 */}
-              <Card title="描述" size="small">
-                <Paragraph
-                  copyable={{ text: result.youtube_metadata.description }}
-                  style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}
-                >
-                  {result.youtube_metadata.description}
-                </Paragraph>
-              </Card>
-
-              {/* 标签 */}
-              <Card title={<><TagsOutlined /> 标签</>} size="small">
-                <Space wrap>
-                  {result.youtube_metadata.tags?.map((tag: string, index: number) => (
-                    <Tag key={index} color="blue">
-                      {tag}
-                    </Tag>
-                  ))}
-                </Space>
-                <div style={{ marginTop: 8 }}>
-                  <Button
-                    size="small"
-                    icon={<CopyOutlined />}
-                    onClick={() => copyToClipboard(
-                      result.youtube_metadata.tags.join(', '),
-                      '标签'
+              <Card 
+                title={
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>描述</span>
+                    {(result.youtube_metadata as any).descriptions?.chinese && (
+                      <Button 
+                        size="small" 
+                        onClick={() => setShowChineseDesc(!showChineseDesc)}
+                      >
+                        {showChineseDesc ? '显示英文' : '翻译中文'}
+                      </Button>
                     )}
-                  >
-                    复制所有标签
-                  </Button>
-                </div>
+                  </div>
+                } 
+                size="small"
+              >
+                {(() => {
+                  const metadata = result.youtube_metadata as any;
+                  if (!metadata || !metadata.descriptions) {
+                    return <Empty description="暂无描述数据" />;
+                  }
+                  
+                  const description = showChineseDesc ? metadata.descriptions.chinese : metadata.descriptions.english;
+                  return (
+                    <Paragraph
+                      copyable={{ text: description }}
+                      style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}
+                    >
+                      {description}
+                    </Paragraph>
+                  );
+                })()}
               </Card>
 
-              {/* 缩略图建议 */}
-              {result.youtube_metadata.thumbnail_suggestions && (
-                <Card title={<><PictureOutlined /> 缩略图建议</>} size="small">
-                  <Space direction="vertical">
-                    {result.youtube_metadata.thumbnail_suggestions.map((suggestion: any, index: number) => (
-                      <div key={index}>
-                        <Text strong>{suggestion.style}: </Text>
-                        <Text>{suggestion.description}</Text>
-                      </div>
-                    ))}
-                  </Space>
-                </Card>
-              )}
+              {/* 标签 - 只显示英文标签 */}
+              <Card title={<><TagsOutlined /> 标签</>} size="small">
+                {(() => {
+                  const metadata = result.youtube_metadata as any;
+                  if (!metadata || !metadata.tags || !metadata.tags.english) {
+                    return <Empty description="暂无标签数据" />;
+                  }
+                  
+                  const englishTags = metadata.tags.english || [];
+                  
+                  return (
+                    <>
+                      <Space wrap>
+                        {englishTags.map((tag: string, index: number) => (
+                          <Tag key={`en-${index}`} color="blue">
+                            {tag}
+                          </Tag>
+                        ))}
+                      </Space>
+                      {englishTags.length > 0 && (
+                        <div style={{ marginTop: 16 }}>
+                          <Button
+                            size="small"
+                            icon={<CopyOutlined />}
+                            onClick={() => copyToClipboard(
+                              englishTags.join(', '),
+                              '标签'
+                            )}
+                          >
+                            复制所有标签
+                          </Button>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </Card>
+
+              {/* 缩略图信息 */}
+              {(() => {
+                const metadata = result.youtube_metadata as any;
+                const thumbnail = metadata.thumbnail;
+                
+                if (!thumbnail) return null;
+                
+                // 新格式的缩略图信息
+                if (thumbnail.visual_focus || thumbnail.text_overlay) {
+                  return (
+                    <Card title={<><PictureOutlined /> 缩略图设计</>} size="small">
+                      <Space direction="vertical" style={{ width: '100%' }}>
+                        {thumbnail.visual_focus && (
+                          <div>
+                            <Text strong>视觉焦点: </Text>
+                            <Text style={{ display: 'block', marginTop: 8 }}>{thumbnail.visual_focus}</Text>
+                          </div>
+                        )}
+                        
+                        {thumbnail.text_overlay && (
+                          <div style={{ marginTop: 16 }}>
+                            <Text strong>文字叠加: </Text>
+                            <div style={{ marginTop: 8 }}>
+                              <Tag color="blue">英文: {thumbnail.text_overlay.english}</Tag>
+                              <Tag color="red">中文: {thumbnail.text_overlay.chinese}</Tag>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {thumbnail.color_scheme && (
+                          <div style={{ marginTop: 16 }}>
+                            <Text strong>配色方案: </Text>
+                            <Text style={{ display: 'block', marginTop: 8 }}>{thumbnail.color_scheme}</Text>
+                          </div>
+                        )}
+                        
+                        {thumbnail.emotion && (
+                          <div style={{ marginTop: 16 }}>
+                            <Text strong>情感表达: </Text>
+                            <Text style={{ display: 'block', marginTop: 8 }}>{thumbnail.emotion}</Text>
+                          </div>
+                        )}
+                      </Space>
+                    </Card>
+                  );
+                }
+                
+                
+                return null;
+              })()}
             </Space>
           ) : task.status === 'completed' ? (
             <Empty description="暂无YouTube元数据" />

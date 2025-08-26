@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 import asyncio
 import platform
+import threading
 
 # 定义获取子进程编码环境的函数
 def get_subprocess_encoding_env():
@@ -79,6 +80,11 @@ def setup_logging(log_file: Optional[str] = None, verbose: bool = False):
 # 默认配置
 logger = setup_logging()
 
+# 创建全局的视频导出信号量，确保同时只有一个导出任务在执行
+# 这样可以避免对下游导出服务造成压力
+video_export_semaphore = threading.Semaphore(1)
+logger.info("视频导出信号量已初始化，同时只允许1个导出任务")
+
 
 class VideoPipeline:
     """视频生成Pipeline核心类"""
@@ -116,8 +122,11 @@ class VideoPipeline:
         
         logger.info(f"使用脚本目录: {self.scripts_base_dir.resolve()}")
         
-        # 构建输出目录路径
-        self.output_dir = Path(f"outputs/{request.creator_id}/{request.video_id}")
+        # 构建输出目录路径 - 如果有 account_name 则添加到路径中
+        if request.account_name:
+            self.output_dir = Path(f"outputs/{request.creator_id}/{request.account_name}/{request.video_id}")
+        else:
+            self.output_dir = Path(f"outputs/{request.creator_id}/{request.video_id}")
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
         # 设置日志文件（如果没有指定，使用默认位置）
@@ -125,7 +134,11 @@ class VideoPipeline:
             log_dir = Path("logs")
             log_dir.mkdir(exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            self.log_file = log_dir / f"pipeline_{request.creator_id}_{request.video_id}_{timestamp}.log"
+            # 在日志文件名中也包含 account_name
+            if request.account_name:
+                self.log_file = log_dir / f"pipeline_{request.creator_id}_{request.account_name}_{request.video_id}_{timestamp}.log"
+            else:
+                self.log_file = log_dir / f"pipeline_{request.creator_id}_{request.video_id}_{timestamp}.log"
             # 重新设置日志 - 现在logging_config能正确处理完整路径
             logger = setup_logging(str(self.log_file), verbose)
             logger.info(f"日志文件: {self.log_file}")
@@ -582,14 +595,23 @@ class VideoPipeline:
             str(gender_value)
         ]
         
-        logger.debug(f"语音生成参数: cid={self.request.creator_id}, vid={self.request.video_id}, gender={gender_value}")
+        # 如果有 account_name，也传递给语音生成脚本
+        if hasattr(self.request, 'account_name') and self.request.account_name:
+            command.extend(["--account", self.request.account_name])
+        
+        logger.debug(f"语音生成参数: cid={self.request.creator_id}, vid={self.request.video_id}, gender={gender_value}, account={getattr(self.request, 'account_name', None)}")
         
         result = self._run_command(command, "语音生成", timeout=900)
         
         # 记录生成的文件（语音生成脚本输出到./output/目录）
         if result.status == StageStatus.SUCCESS:
-            audio_path = Path(f"./output/{self.request.creator_id}_{self.request.video_id}_story.mp3")
-            srt_path = Path(f"./output/{self.request.creator_id}_{self.request.video_id}_story.srt")
+            # 根据是否有 account_name 构建文件路径
+            if hasattr(self.request, 'account_name') and self.request.account_name:
+                audio_path = Path(f"./output/{self.request.creator_id}_{self.request.account_name}_{self.request.video_id}_story.mp3")
+                srt_path = Path(f"./output/{self.request.creator_id}_{self.request.account_name}_{self.request.video_id}_story.srt")
+            else:
+                audio_path = Path(f"./output/{self.request.creator_id}_{self.request.video_id}_story.mp3")
+                srt_path = Path(f"./output/{self.request.creator_id}_{self.request.video_id}_story.srt")
             output_files = []
             if audio_path.exists():
                 output_files.append(str(audio_path))
@@ -625,6 +647,10 @@ class VideoPipeline:
             str(self.request.duration)
         ]
         
+        # 如果有 account_name，也传递给草稿生成脚本
+        if hasattr(self.request, 'account_name') and self.request.account_name:
+            command.extend(["--account", self.request.account_name])
+        
         # 如果指定了图库目录，添加参数
         if self.request.image_dir:
             command.extend(["--image_dir", self.request.image_dir])
@@ -639,9 +665,13 @@ class VideoPipeline:
         if result.status == StageStatus.SUCCESS:
             output_files = []
             
-            # 定义路径
-            draft_folder = Path(f"./output/drafts/{self.request.creator_id}_{self.request.video_id}_story")
-            draft_zip = Path(f"./output/drafts/{self.request.creator_id}_{self.request.video_id}_story.zip")
+            # 定义路径 - 包含 account_name
+            if hasattr(self.request, 'account_name') and self.request.account_name:
+                draft_folder = Path(f"./output/drafts/{self.request.creator_id}_{self.request.account_name}_{self.request.video_id}_story")
+                draft_zip = Path(f"./output/drafts/{self.request.creator_id}_{self.request.account_name}_{self.request.video_id}_story.zip")
+            else:
+                draft_folder = Path(f"./output/drafts/{self.request.creator_id}_{self.request.video_id}_story")
+                draft_zip = Path(f"./output/drafts/{self.request.creator_id}_{self.request.video_id}_story.zip")
             
             # 获取目标目录配置
             draft_dir = os.environ.get('DRAFT_LOCAL_DIR')
@@ -655,9 +685,12 @@ class VideoPipeline:
                         draft_target_dir = Path(draft_dir)
                         draft_target_dir.mkdir(parents=True, exist_ok=True)
                         
-                        # 生成唯一的目标文件夹名
+                        # 生成唯一的目标文件夹名 - 包含 account_name
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        draft_folder_name = f"{self.request.creator_id}_{self.request.video_id}_{timestamp}"
+                        if hasattr(self.request, 'account_name') and self.request.account_name:
+                            draft_folder_name = f"{self.request.creator_id}_{self.request.account_name}_{self.request.video_id}_{timestamp}"
+                        else:
+                            draft_folder_name = f"{self.request.creator_id}_{self.request.video_id}_{timestamp}"
                         draft_target = draft_target_dir / draft_folder_name
                         
                         # 移动文件夹
@@ -718,6 +751,11 @@ class VideoPipeline:
             status=StageStatus.RUNNING
         )
         
+        # 使用信号量确保同时只有一个导出任务在执行
+        logger.info(f"[视频导出] 等待获取导出锁...")
+        video_export_semaphore.acquire()
+        logger.info(f"[视频导出] 成功获取导出锁，开始导出")
+        
         try:
             # 获取草稿路径
             draft_path = self.paths.get('draft')
@@ -751,10 +789,14 @@ class VideoPipeline:
                     output_dir = Path(video_output_dir)
                     output_dir.mkdir(parents=True, exist_ok=True)
                     
-                    # 生成唯一文件名
+                    # 生成唯一文件名 - 包含 account_name（如果存在）
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    video_filename = f"{self.request.creator_id}_{self.request.video_id}_{timestamp}.mp4"
-                    preview_filename = f"{self.request.creator_id}_{self.request.video_id}_{timestamp}_preview.mp4"
+                    if hasattr(self.request, 'account_name') and self.request.account_name:
+                        video_filename = f"{self.request.creator_id}_{self.request.account_name}_{self.request.video_id}_{timestamp}.mp4"
+                        preview_filename = f"{self.request.creator_id}_{self.request.account_name}_{self.request.video_id}_{timestamp}_preview.mp4"
+                    else:
+                        video_filename = f"{self.request.creator_id}_{self.request.video_id}_{timestamp}.mp4"
+                        preview_filename = f"{self.request.creator_id}_{self.request.video_id}_{timestamp}_preview.mp4"
                     
                     # 目标路径
                     target_video_path = output_dir / video_filename
@@ -831,6 +873,10 @@ class VideoPipeline:
             stage_result.status = StageStatus.FAILED
             stage_result.error = str(e)
             logger.error(f"[ERROR] 视频导出失败: {e}")
+        finally:
+            # 无论成功或失败，都要释放信号量
+            video_export_semaphore.release()
+            logger.info(f"[视频导出] 已释放导出锁")
         
         end_time = datetime.now()
         stage_result.duration = (end_time - start_time).total_seconds()

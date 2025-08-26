@@ -67,6 +67,16 @@ export const workflows: WorkflowConfig[] = [
         icon: <UserOutlined />
       },
       {
+        name: 'account_name',
+        label: '发布账号',
+        type: 'select',
+        required: false,
+        placeholder: '选择发布账号（可选）',
+        tooltip: '选择要发布到的YouTube账号',
+        icon: <UserOutlined />,
+        options: []  // 将在组件中动态加载
+      },
+      {
         name: 'gender',
         label: '语音性别',
         type: 'select',
@@ -98,14 +108,14 @@ export const workflows: WorkflowConfig[] = [
         name: 'export_video',
         label: '自动导出视频',
         type: 'switch',
-        defaultValue: false,
+        defaultValue: true,
         tooltip: '是否在草稿生成后自动导出视频文件'
       },
       {
         name: 'enable_subtitle',
         label: '启用字幕',
         type: 'switch',
-        defaultValue: false,
+        defaultValue: true,
         tooltip: '是否在视频中添加字幕'
       }
     ],

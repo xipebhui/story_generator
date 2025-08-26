@@ -21,8 +21,10 @@ import {
   CloseOutlined
 } from '@ant-design/icons';
 import { workflows, getWorkflowConfig, getWorkflowDefaults } from '../../config/workflows';
-import { pipelineService } from '../../services/pipeline';
+import { pipelineAdapter } from '../../services/pipelineAdapter';
 import { PipelineRequest } from '../../types/api';
+import { backendAccountService } from '../../services/backend';
+import { YouTubeAccount } from '../../services/backend';
 
 interface CreateTaskModalProps {
   visible: boolean;
@@ -40,6 +42,14 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState<string>(workflowKey || '');
+  const [accounts, setAccounts] = useState<YouTubeAccount[]>([]);
+
+  // 加载账号列表
+  useEffect(() => {
+    if (visible) {
+      loadAccounts();
+    }
+  }, [visible]);
 
   // 当workflowKey变化时更新选中的工作流
   useEffect(() => {
@@ -50,6 +60,19 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       form.setFieldsValue(defaults);
     }
   }, [workflowKey, form]);
+  
+  // 加载账号列表
+  const loadAccounts = async () => {
+    try {
+      const accountList = await backendAccountService.getAccounts();
+      // 只保留激活的账号
+      const activeAccounts = accountList.filter((acc: any) => acc.is_active);
+      setAccounts(activeAccounts);
+    } catch (error) {
+      console.error('加载账号列表失败:', error);
+      setAccounts([]);
+    }
+  };
 
   // 获取当前工作流配置
   const currentWorkflow = getWorkflowConfig(selectedWorkflow);
@@ -73,18 +96,20 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       const request: PipelineRequest = {
         video_id: values.video_id,
         creator_id: values.creator_id,
+        account_name: values.account_name,  // 添加账号名称
         gender: values.gender || 1,
         duration: values.duration || 60,
         image_dir: values.image_dir,
-        export_video: values.export_video || false,
-        enable_subtitle: values.enable_subtitle || false,
+        export_video: values.export_video !== undefined ? values.export_video : true,
+        enable_subtitle: values.enable_subtitle !== undefined ? values.enable_subtitle : true,
         // 添加工作流特定参数
         workflow_type: selectedWorkflow,
         ...values
       };
 
-      const response = await pipelineService.runPipeline(request);
-      onSuccess(response.task_id);
+      // 使用适配器创建任务
+      const task = await pipelineAdapter.createTask(selectedWorkflow, values);
+      onSuccess(task.task_id);
     } catch (error: any) {
       console.error('创建任务失败:', error);
     } finally {
@@ -119,6 +144,23 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
         );
       
       case 'select':
+        // 如果是账号选择字段，使用动态加载的账号列表
+        if (field.name === 'account_name') {
+          return (
+            <Form.Item {...commonProps}>
+              <Select 
+                placeholder={field.placeholder || `请选择${field.label}`}
+                allowClear
+              >
+                {accounts.map(account => (
+                  <Select.Option key={account.account_name} value={account.account_name}>
+                    {account.account_name}
+                  </Select.Option>
+                ))}
+              </Select>
+            </Form.Item>
+          );
+        }
         return (
           <Form.Item {...commonProps}>
             <Select placeholder={`请选择${field.label}`}>
