@@ -24,16 +24,17 @@ from config_loader import load_env_file
 load_env_file()
 
 # 配置日志（使用统一的日志配置）
+log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()  # 在外面定义log_level变量
+
 try:
     from utils.logging_config import setup_logging
     logger = setup_logging(
         name=__name__,
-        level=os.environ.get('LOG_LEVEL', 'INFO'),
+        level=log_level,
         log_file='api_simple.log'
     )
 except ImportError:
     # 如果无法导入，使用基本配置
-    log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
     logging.basicConfig(
         level=getattr(logging, log_level, logging.INFO),
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',

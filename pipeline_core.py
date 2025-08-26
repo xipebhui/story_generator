@@ -126,7 +126,7 @@ class VideoPipeline:
             log_dir.mkdir(exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             self.log_file = log_dir / f"pipeline_{request.creator_id}_{request.video_id}_{timestamp}.log"
-            # 重新设置日志
+            # 重新设置日志 - 现在logging_config能正确处理完整路径
             logger = setup_logging(str(self.log_file), verbose)
             logger.info(f"日志文件: {self.log_file}")
         else:

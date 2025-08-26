@@ -73,18 +73,28 @@ def setup_logging(
     
     # 文件处理器
     if file_log:
-        # 创建日志目录
-        log_path = Path(log_dir)
-        log_path.mkdir(parents=True, exist_ok=True)
-        
-        # 生成日志文件名
-        if not log_file:
+        # 处理日志文件路径
+        if log_file:
+            # 如果提供了log_file，检查是否是绝对路径或包含目录
+            file_path = Path(log_file)
+            if file_path.is_absolute() or len(file_path.parts) > 1:
+                # 如果是绝对路径或包含目录，直接使用
+                # 确保目录存在
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+            else:
+                # 如果只是文件名，放到log_dir目录下
+                log_path = Path(log_dir)
+                log_path.mkdir(parents=True, exist_ok=True)
+                file_path = log_path / log_file
+        else:
+            # 如果没有提供log_file，生成默认文件名
+            log_path = Path(log_dir)
+            log_path.mkdir(parents=True, exist_ok=True)
             from datetime import datetime
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             module_name = name or "app"
             log_file = f"{module_name}_{timestamp}.log"
-        
-        file_path = log_path / log_file
+            file_path = log_path / log_file
         
         # 创建文件处理器，始终使用UTF-8编码
         file_handler = logging.FileHandler(
