@@ -13,15 +13,6 @@ from pathlib import Path
 from typing import Optional
 import json
 
-# Windows系统设置控制台编码为UTF-8
-if platform.system() == 'Windows':
-    import codecs
-    # 设置控制台代码页为UTF-8
-    os.system('chcp 65001 > nul 2>&1')
-    # 重新配置stdout和stderr使用UTF-8
-    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'replace')
-    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'replace')
-
 # 添加项目根目录到系统路径
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
@@ -52,31 +43,33 @@ from pipeline_steps_youtube_metadata import GenerateYouTubeMetadataStep
 # 尝试使用基于requests的客户端（对Windows + SOCKS5代理更友好）
 try:
     from youtube_client_requests import YouTubeAPIClient
-    print("[INFO] 使用基于requests的YouTube客户端（SOCKS5代理支持）")
+    logger.info("使用基于requests的YouTube客户端（SOCKS5代理支持）")
 except ImportError:
     from youtube_client import YouTubeAPIClient
-    print("[INFO] 使用原始YouTube客户端")
+    logger.info("使用原始YouTube客户端")
     
 from gemini_client import GeminiClient
 
 # 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(name)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler('pipeline_v3.log', encoding='utf-8')
-    ]
-)
-
-# Windows系统特别处理日志编码
-if platform.system() == 'Windows':
-    for handler in logging.root.handlers:
-        if isinstance(handler, logging.StreamHandler):
-            handler.stream = sys.stdout
-
-logger = logging.getLogger(__name__)
+try:
+    from utils.logging_config import setup_logging
+    logger = setup_logging(
+        name=__name__,
+        level=os.environ.get('LOG_LEVEL', 'INFO'),
+        log_file='pipeline_v3.log'
+    )
+except ImportError:
+    # 备用配置
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(name)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler('pipeline_v3.log', encoding='utf-8')
+        ]
+    )
+    logger = logging.getLogger(__name__)
 
 
 class StrictPipeline(Pipeline):

@@ -17,32 +17,18 @@ import logging
 from typing import List, Optional
 from pathlib import Path
 
-# Windows系统设置控制台编码为UTF-8
-if platform.system() == 'Windows':
-    import codecs
-    # 设置控制台代码页为UTF-8
-    os.system('chcp 65001 > nul 2>&1')
-    # 重新配置stdout和stderr使用UTF-8
-    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'replace')
-    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'replace')
-
 # 添加项目根目录到Python路径
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# 导入安全打印函数
+# 导入日志配置
 try:
-    from utils import safe_print
+    from utils.logging_config import get_logger, convert_print_to_log as safe_print
+    logger = get_logger(__name__)
 except ImportError:
-    # 如果导入失败，定义一个简单的 safe_print
-    import platform
+    # 备用safe_print和logger
     def safe_print(message: str, file=None):
-        if platform.system() == 'Windows':
-            message = message.replace('✅', '[OK]').replace('❌', '[ERROR]').replace('⚠️', '[WARNING]')
-        try:
-            print(message, file=file)
-        except UnicodeEncodeError:
-            message_ascii = message.encode('ascii', 'replace').decode('ascii')
-            print(message_ascii, file=file)
+        logging.info(message)
+    logger = logging.getLogger(__name__)
 
 from pydub import AudioSegment
 from draft_gen.models.draft_models import (
@@ -55,22 +41,16 @@ from draft_gen.models.draft_effects_library import (
 from draft_gen.jianying_subtitle_service import get_subtitle_service
 import uuid
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-
-# Windows系统特别处理日志编码
-if platform.system() == 'Windows':
-    for handler in logging.root.handlers:
-        if isinstance(handler, logging.StreamHandler):
-            handler.stream = sys.stdout
-
-logger = logging.getLogger(__name__)
+# 如果没有logger，配置基本日志
+if not logger.handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler('draft_gen.log', encoding='utf-8')
+        ]
+    )
 
 
 def gen_upper_uuid():

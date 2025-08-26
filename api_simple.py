@@ -9,15 +9,6 @@ import os
 import sys
 import platform
 
-# Windows系统设置控制台编码为UTF-8
-if platform.system() == 'Windows':
-    import codecs
-    # 设置控制台代码页为UTF-8
-    os.system('chcp 65001 > nul 2>&1')
-    # 重新配置stdout和stderr使用UTF-8
-    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'replace')
-    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'replace')
-
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
@@ -32,13 +23,26 @@ from pathlib import Path
 from config_loader import load_env_file
 load_env_file()
 
-# 配置日志
-log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
-logging.basicConfig(
-    level=getattr(logging, log_level, logging.INFO),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# 配置日志（使用统一的日志配置）
+try:
+    from utils.logging_config import setup_logging
+    logger = setup_logging(
+        name=__name__,
+        level=os.environ.get('LOG_LEVEL', 'INFO'),
+        log_file='api_simple.log'
+    )
+except ImportError:
+    # 如果无法导入，使用基本配置
+    log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+    logging.basicConfig(
+        level=getattr(logging, log_level, logging.INFO),
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler('api_simple.log', encoding='utf-8')
+        ]
+    )
+    logger = logging.getLogger(__name__)
 
 # 启动时打印环境变量状态
 logger.info("=" * 60)

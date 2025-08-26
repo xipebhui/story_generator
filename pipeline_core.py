@@ -17,14 +17,19 @@ from typing import Dict, Any, Optional, List
 import asyncio
 import platform
 
-# Windows系统设置控制台编码为UTF-8
-if platform.system() == 'Windows':
-    import codecs
-    # 设置控制台代码页为UTF-8
-    os.system('chcp 65001 > nul 2>&1')
-    # 重新配置stdout和stderr使用UTF-8
-    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'replace')
-    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'replace')
+# 定义获取子进程编码环境的函数
+def get_subprocess_encoding_env():
+    """获取用于subprocess的环境变量，确保子进程使用UTF-8编码"""
+    env = os.environ.copy()
+    if platform.system() == 'Windows':
+        env['PYTHONIOENCODING'] = 'utf-8'
+        env['PYTHONUTF8'] = '1'
+        # 设置控制台代码页（仅在Windows下有效）
+        try:
+            os.system('chcp 65001 > nul 2>&1')
+        except:
+            pass
+    return env
 
 from models import (
     PipelineRequest,
@@ -39,28 +44,37 @@ from models import (
 # 配置日志系统
 def setup_logging(log_file: Optional[str] = None, verbose: bool = False):
     """设置日志配置"""
-    log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    log_level = logging.DEBUG if verbose else logging.INFO
-    
-    # 配置控制台输出
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(log_level)
-    console_handler.setFormatter(logging.Formatter(log_format))
-    
-    # 配置根日志器
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)  # 根日志器设置为DEBUG，由handler控制输出级别
-    root_logger.handlers = []  # 清空现有handlers
-    root_logger.addHandler(console_handler)
-    
-    # 如果指定了日志文件，添加文件handler
-    if log_file:
-        file_handler = logging.FileHandler(log_file, encoding='utf-8')
-        file_handler.setLevel(logging.DEBUG)  # 文件记录所有级别
-        file_handler.setFormatter(logging.Formatter(log_format))
-        root_logger.addHandler(file_handler)
-    
-    return logging.getLogger(__name__)
+    try:
+        from utils.logging_config import setup_logging as setup_unified_logging
+        return setup_unified_logging(
+            name=__name__,
+            level='DEBUG' if verbose else 'INFO',
+            log_file=log_file
+        )
+    except ImportError:
+        # 备用配置
+        log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        log_level = logging.DEBUG if verbose else logging.INFO
+        
+        # 配置控制台输出
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(log_level)
+        console_handler.setFormatter(logging.Formatter(log_format))
+        
+        # 配置根日志器
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.DEBUG)
+        root_logger.handlers = []
+        root_logger.addHandler(console_handler)
+        
+        # 如果指定了日志文件，添加文件handler
+        if log_file:
+            file_handler = logging.FileHandler(log_file, encoding='utf-8')
+            file_handler.setLevel(logging.DEBUG)
+            file_handler.setFormatter(logging.Formatter(log_format))
+            root_logger.addHandler(file_handler)
+        
+        return logging.getLogger(__name__)
 
 # 默认配置
 logger = setup_logging()
