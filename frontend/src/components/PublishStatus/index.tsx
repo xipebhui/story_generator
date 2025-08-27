@@ -25,6 +25,7 @@ import {
 } from '@ant-design/icons';
 import { PublishTask } from '../../types/account';
 import { accountService } from '../../services/account';
+import { backendAccountService } from '../../services/backend';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 
@@ -44,10 +45,40 @@ const PublishStatus: React.FC<PublishStatusProps> = ({
   const loadPublishTasks = async () => {
     setLoading(true);
     try {
-      const tasks = await accountService.getPublishTasks(taskId);
-      setPublishTasks(tasks);
+      // 优先尝试从后端获取真实的发布任务
+      try {
+        const backendTasks = await backendAccountService.getPublishTasks(taskId);
+        
+        // 转换后端任务格式为前端格式
+        const formattedTasks = backendTasks.map((task: any) => ({
+          id: task.publish_id || task.id || `pub_${Date.now()}_${Math.random()}`,
+          task_id: task.task_id,
+          account_id: task.account_id || task.account_ids?.[0],
+          account_name: task.account_name || task.account_id || '未知账号',
+          title: task.video_title || task.title || '未命名视频',
+          description: task.video_description || task.description,
+          video_path: task.video_path,
+          thumbnail_path: task.thumbnail_path,
+          publish_time: task.publish_time || task.created_at,
+          publish_interval: task.publish_interval,
+          status: task.status || 'pending',
+          created_at: task.created_at,
+          published_at: task.published_at,
+          youtube_url: task.youtube_url || task.results?.[0]?.youtube_url,
+          error_message: task.error_message || task.error || task.results?.[0]?.error
+        }));
+        
+        setPublishTasks(formattedTasks);
+      } catch (backendError) {
+        console.warn('无法从后端获取发布任务，尝试使用本地数据:', backendError);
+        // 如果后端不可用，回退到本地模拟数据
+        const tasks = await accountService.getPublishTasks(taskId);
+        setPublishTasks(tasks);
+      }
     } catch (error) {
+      console.error('加载发布任务失败:', error);
       message.error('加载发布任务失败');
+      setPublishTasks([]);
     } finally {
       setLoading(false);
     }

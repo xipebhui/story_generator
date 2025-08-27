@@ -367,6 +367,36 @@ class BackendAccountService {
   async getPublishStatus(taskId: string): Promise<any> {
     return apiRequest(`/publish/status/${taskId}`);
   }
+
+  // 获取所有发布任务
+  async getPublishTasks(taskId?: string): Promise<any[]> {
+    // 如果提供了taskId，获取单个任务的发布状态
+    if (taskId) {
+      try {
+        const status = await this.getPublishStatus(taskId);
+        // 如果状态是数组，直接返回；如果是单个对象，包装成数组
+        if (Array.isArray(status)) {
+          return status;
+        } else if (status && typeof status === 'object') {
+          return [status];
+        }
+        return [];
+      } catch (error) {
+        console.error('获取发布状态失败:', error);
+        return [];
+      }
+    }
+    
+    // 获取所有发布任务（后端可能需要添加这个接口）
+    try {
+      const response = await apiRequest('/publish/tasks');
+      return Array.isArray(response) ? response : response.tasks || [];
+    } catch (error) {
+      console.error('获取发布任务列表失败:', error);
+      // 如果没有这个接口，尝试其他方法
+      return [];
+    }
+  }
 }
 
 // 导出服务实例
