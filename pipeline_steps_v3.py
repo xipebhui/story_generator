@@ -33,29 +33,42 @@ class FetchYouTubeDataV3Step(PipelineStep):
     
     def execute(self, context: PipelineContextV3) -> StepResult:
         """执行数据获取"""
+        # 检查缓存
+        if context.cache_dir:
+            cached_data = self._load_cached_data(context)
+            if cached_data:
+                context.update(**cached_data)
+                logger.info(f"✅ 从缓存加载YouTube数据")
+                return StepResult(success=True, data=cached_data)
+        
+        # 创建缓存目录
+        if context.cache_dir and context.save_intermediate:
+            cache_dir = context.cache_dir / "raw"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 1. 获取视频信息（独立处理）
         try:
-            # 检查缓存
-            if context.cache_dir:
-                cached_data = self._load_cached_data(context)
-                if cached_data:
-                    context.update(**cached_data)
-                    logger.info(f"✅ 从缓存加载YouTube数据")
-                    return StepResult(success=True, data=cached_data)
-            
-            # 获取视频信息
             logger.info(f"📊 获取视频信息: {context.video_id}")
             video_details = self.youtube_client.get_video_details([context.video_id])
-            if not video_details or not video_details.get('items'):
-                raise Exception(f"Failed to fetch video details for {context.video_id}")
-            
-            video_info = video_details['items'][0]
-            context.video_info = {
-                'title': video_info['snippet']['title'],
-                'description': video_info['snippet']['description'],
-                'channel_title': video_info['snippet']['channelTitle']
-            }
-            
-            # 获取评论
+            if video_details and video_details.get('items'):
+                video_info = video_details['items'][0]
+                context.video_info = {
+                    'title': video_info['snippet']['title'],
+                    'description': video_info['snippet']['description'],
+                    'channel_title': video_info['snippet']['channelTitle']
+                }
+                # 立即保存视频信息
+                if context.save_intermediate and context.cache_dir:
+                    with open(cache_dir / "video_info.json", 'w', encoding='utf-8') as f:
+                        json.dump(context.video_info, f, ensure_ascii=False, indent=2)
+                logger.info(f"✅ 视频信息获取成功并已保存")
+            else:
+                logger.warning(f"⚠️ 无法获取视频信息，但继续处理")
+        except Exception as e:
+            logger.warning(f"⚠️ 获取视频信息失败: {e}，但继续处理")
+        
+        # 2. 获取评论（独立处理）
+        try:
             logger.info("💬 获取热门评论")
             comments_data = self.youtube_client.get_video_comments(
                 context.video_id, max_results=10
@@ -72,8 +85,20 @@ class FetchYouTubeDataV3Step(PipelineStep):
                 context.comments = sorted(
                     comments, key=lambda x: x['likes'], reverse=True
                 )[:5]
-            
-            # 获取字幕（必须成功）
+                # 立即保存评论
+                if context.save_intermediate and context.cache_dir:
+                    with open(cache_dir / "comments.json", 'w', encoding='utf-8') as f:
+                        json.dump(context.comments, f, ensure_ascii=False, indent=2)
+                logger.info(f"✅ 评论获取成功并已保存")
+            else:
+                context.comments = []
+                logger.warning(f"⚠️ 无法获取评论，但继续处理")
+        except Exception as e:
+            context.comments = []
+            logger.warning(f"⚠️ 获取评论失败: {e}，但继续处理")
+        
+        # 3. 获取字幕（必须成功才能继续pipeline）
+        try:
             logger.info("📝 获取视频字幕")
             
             # 首先检查是否有手动上传的字幕文件
@@ -91,6 +116,7 @@ class FetchYouTubeDataV3Step(PipelineStep):
                 logger.info("📥 从YouTube获取字幕...")
                 subtitle_path = self.youtube_client.get_video_transcript(context.video_id)
                 if not subtitle_path:
+                    # 字幕获取失败，但其他数据已经保存
                     raise Exception(f"Failed to fetch transcript for {context.video_id} - TERMINATING")
                 
                 # 读取字幕文件内容
@@ -98,17 +124,21 @@ class FetchYouTubeDataV3Step(PipelineStep):
                 with open(absolute_path, 'r', encoding='utf-8') as f:
                     subtitle_text = f.read()
                 context.subtitles = subtitle_text
-            
-            # 保存缓存
-            if context.save_intermediate and context.cache_dir:
-                self._save_cached_data(context)
+                
+                # 保存字幕
+                if context.save_intermediate and context.cache_dir:
+                    with open(cache_dir / "subtitle.txt", 'w', encoding='utf-8') as f:
+                        f.write(context.subtitles)
+                    logger.info(f"✅ 字幕获取成功并已保存")
             
             logger.info(f"✅ YouTube数据获取成功")
             return StepResult(success=True)
             
         except Exception as e:
-            error_msg = f"Failed to fetch YouTube data: {e}"
+            # 字幕失败，但视频信息和评论已经保存
+            error_msg = f"Failed to fetch transcript: {e}"
             logger.error(f"❌ {error_msg}")
+            logger.info(f"ℹ️ 视频信息和评论已保存到: {context.cache_dir / 'raw' if context.cache_dir else 'N/A'}")
             context.add_error(error_msg)
             return StepResult(success=False, error=error_msg)
     
@@ -147,22 +177,31 @@ class FetchYouTubeDataV3Step(PipelineStep):
         return None
     
     def _save_cached_data(self, context: PipelineContextV3):
-        """保存缓存数据"""
+        """保存缓存数据（现在每部分数据在获取时就已经单独保存了）"""
         try:
             cache_dir = context.cache_dir / "raw"
             cache_dir.mkdir(parents=True, exist_ok=True)
             
-            # 保存视频信息
-            with open(cache_dir / "video_info.json", 'w', encoding='utf-8') as f:
-                json.dump(context.video_info, f, ensure_ascii=False, indent=2)
+            # 保存视频信息（如果存在且未保存）
+            if hasattr(context, 'video_info') and context.video_info:
+                video_file = cache_dir / "video_info.json"
+                if not video_file.exists():
+                    with open(video_file, 'w', encoding='utf-8') as f:
+                        json.dump(context.video_info, f, ensure_ascii=False, indent=2)
             
-            # 保存评论
-            with open(cache_dir / "comments.json", 'w', encoding='utf-8') as f:
-                json.dump(context.comments, f, ensure_ascii=False, indent=2)
+            # 保存评论（如果存在且未保存）
+            if hasattr(context, 'comments') and context.comments:
+                comments_file = cache_dir / "comments.json"
+                if not comments_file.exists():
+                    with open(comments_file, 'w', encoding='utf-8') as f:
+                        json.dump(context.comments, f, ensure_ascii=False, indent=2)
             
-            # 保存字幕
-            with open(cache_dir / "subtitle.txt", 'w', encoding='utf-8') as f:
-                f.write(context.subtitles)
+            # 保存字幕（如果存在且未保存）
+            if hasattr(context, 'subtitles') and context.subtitles:
+                subtitle_file = cache_dir / "subtitle.txt"
+                if not subtitle_file.exists():
+                    with open(subtitle_file, 'w', encoding='utf-8') as f:
+                        f.write(context.subtitles)
                 
         except Exception as e:
             logger.warning(f"Failed to save cache: {e}")

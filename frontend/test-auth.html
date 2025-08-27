@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>测试认证</title>
+</head>
+<body>
+    <h1>Pipeline API 认证测试</h1>
+    <div>
+        <button onclick="testWithAuth()">测试带认证的请求</button>
+        <button onclick="testWithoutAuth()">测试不带认证的请求</button>
+        <button onclick="clearAuth()">清除认证信息</button>
+        <button onclick="setTestAuth()">设置测试认证</button>
+    </div>
+    <pre id="result"></pre>
+
+    <script>
+        const API_BASE = 'http://localhost:51082/api';
+        const resultDiv = document.getElementById('result');
+
+        function log(message) {
+            resultDiv.textContent += message + '\n';
+            console.log(message);
+        }
+
+        async function testWithAuth() {
+            resultDiv.textContent = '';
+            const apiKey = localStorage.getItem('api_key');
+            log('当前API Key: ' + (apiKey || '未设置'));
+            
+            try {
+                const response = await fetch(`${API_BASE}/pipeline/history`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    }
+                });
+                
+                log(`响应状态: ${response.status}`);
+                const data = await response.json();
+                log('响应数据: ' + JSON.stringify(data, null, 2));
+            } catch (error) {
+                log('请求失败: ' + error.message);
+            }
+        }
+
+        async function testWithoutAuth() {
+            resultDiv.textContent = '';
+            log('发送不带认证的请求...');
+            
+            try {
+                const response = await fetch(`${API_BASE}/pipeline/history`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                log(`响应状态: ${response.status}`);
+                const data = await response.json();
+                log('响应数据: ' + JSON.stringify(data, null, 2));
+            } catch (error) {
+                log('请求失败: ' + error.message);
+            }
+        }
+
+        function clearAuth() {
+            localStorage.removeItem('api_key');
+            localStorage.removeItem('username');
+            log('认证信息已清除');
+        }
+
+        function setTestAuth() {
+            // 使用之前测试创建的用户的API Key
+            localStorage.setItem('api_key', '7946c910-4eac-4225-a0ca-10e7058a0d5c');
+            localStorage.setItem('username', 'testuser');
+            log('测试认证信息已设置');
+        }
+    </script>
+</body>
+</html>

@@ -5,56 +5,16 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="b06674bc-41ad-4cbf-b795-3fc27c1ebd5f" name="更改" comment="增加超时设置">
-      <change afterPath="$PROJECT_DIR$/API_DOCUMENTATION.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/account_service.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/api_with_db.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/database.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/db_migrate.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/API_DOCUMENTATION.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/FRONTEND_BACKEND_ADAPTATION.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/account-name-integration.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/api-complete-guide.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/api-quick-reference.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/pipeline-concurrency-issues.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/publish-schedule-api.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/publish-scheduler-api.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/youtube-upload-integration.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/draft_gen/comic_draft_generator.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/FRONTEND_BACKEND_ADAPTATION.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/api_with_db.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/components/AccountManager/index.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/components/PublishStatus/index.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/services/account.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/services/backend.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/services/pipelineAdapter.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/services/ytengine.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/styles/dashboard.css" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/types/account.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/utils/healthCheck.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/migrate_accounts.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/publish_service.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/start_api_with_db.sh" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/test_api_with_db.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.claude/settings.local.json" beforeDir="false" afterPath="$PROJECT_DIR$/.claude/settings.local.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.env.example" beforeDir="false" afterPath="$PROJECT_DIR$/.env.example" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/api_simple.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/App.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/CreateTaskModal/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/CreateTaskModal/index.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/PublishModal/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/PublishModal/index.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/TaskDetailDrawer/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/TaskDetailDrawer/index.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/config/workflows.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/config/workflows.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/api_with_db.py" beforeDir="false" afterPath="$PROJECT_DIR$/api_with_db.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/database.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/pages/Dashboard/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/Dashboard/index.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/styles/modern.css" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/styles/modern.css" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/styles/theme.css" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/styles/theme.css" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/types/task.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/types/task.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/vite.config.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/vite.config.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/models.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pipeline_core.py" beforeDir="false" afterPath="$PROJECT_DIR$/pipeline_core.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/router.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/router.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/services/backend.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/services/backend.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/services/pipelineAdapter.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/services/pipelineAdapter.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pipeline_steps_v3.py" beforeDir="false" afterPath="$PROJECT_DIR$/pipeline_steps_v3.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/story_pipeline_v3_runner.py" beforeDir="false" afterPath="$PROJECT_DIR$/story_pipeline_v3_runner.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/webtoon/comic_pipeline/pipeline.py" beforeDir="false" afterPath="$PROJECT_DIR$/webtoon/comic_pipeline/pipeline.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -312,7 +272,31 @@
       <option name="project" value="LOCAL" />
       <updated>1756139641369</updated>
     </task>
-    <option name="localTasksCounter" value="25" />
+    <task id="LOCAL-00025" summary="增加超时设置">
+      <option name="closed" value="true" />
+      <created>1756229206052</created>
+      <option name="number" value="00025" />
+      <option name="presentableId" value="LOCAL-00025" />
+      <option name="project" value="LOCAL" />
+      <updated>1756229206052</updated>
+    </task>
+    <task id="LOCAL-00026" summary="增加超时设置">
+      <option name="closed" value="true" />
+      <created>1756229350906</created>
+      <option name="number" value="00026" />
+      <option name="presentableId" value="LOCAL-00026" />
+      <option name="project" value="LOCAL" />
+      <updated>1756229350906</updated>
+    </task>
+    <task id="LOCAL-00027" summary="增加超时设置">
+      <option name="closed" value="true" />
+      <created>1756229558695</created>
+      <option name="number" value="00027" />
+      <option name="presentableId" value="LOCAL-00027" />
+      <option name="project" value="LOCAL" />
+      <updated>1756229558695</updated>
+    </task>
+    <option name="localTasksCounter" value="28" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
