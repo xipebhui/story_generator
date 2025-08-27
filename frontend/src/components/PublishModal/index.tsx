@@ -217,7 +217,7 @@ const PublishModal: React.FC<PublishModalProps> = ({
         video_title: title,
         video_description: values.description,
         video_tags: values.tags?.split(',').map((t: string) => t.trim()).filter(Boolean),
-        privacy_status: 'private',
+        privacy_status: 'public',
         thumbnail_path: uploadedThumbnailPath || undefined
       });
       

@@ -536,7 +536,7 @@ export class TaskManager {
       video_title: options?.title || `AI生成视频 - ${new Date().toLocaleDateString()}`,
       video_description: options?.description || '这是通过AI自动生成的视频内容',
       video_tags: options?.tags || ['AI生成', '自动创作'],
-      privacy_status: options?.privacy || 'private'
+      privacy_status: options?.privacy || 'public'
     });
   }
 
