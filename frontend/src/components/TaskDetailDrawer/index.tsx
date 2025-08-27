@@ -221,6 +221,57 @@ const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
             </Descriptions.Item>
           </Descriptions>
 
+          {/* 字幕上传 - 移到基本信息页，无论任务成功或失败都可以上传 */}
+          <Divider>字幕管理</Divider>
+          <Card size="small" style={{ marginBottom: 16 }}>
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Alert
+                message="字幕上传"
+                description="您可以上传.txt格式的字幕文件，系统将自动同步到视频中。无论任务状态如何，都可以上传字幕。"
+                type="info"
+                showIcon
+                style={{ marginBottom: 12 }}
+              />
+              <Upload
+                accept=".txt"
+                showUploadList={false}
+                beforeUpload={async (file) => {
+                  // 检查文件类型
+                  if (!file.name.endsWith('.txt')) {
+                    message.error('请上传.txt格式的字幕文件');
+                    return false;
+                  }
+                  
+                  // 检查文件大小（限制5MB）
+                  if (file.size > 5 * 1024 * 1024) {
+                    message.error('字幕文件不能超过5MB');
+                    return false;
+                  }
+                  
+                  try {
+                    message.loading('正在上传字幕...');
+                    const response = await backendAccountService.uploadSubtitle(task.task_id, file);
+                    message.success(`字幕上传成功！文件大小: ${(response.file_size / 1024).toFixed(2)}KB`);
+                    
+                    // 可选：刷新任务结果
+                    loadTaskResult();
+                  } catch (error: any) {
+                    message.error(error.message || '字幕上传失败');
+                  }
+                  
+                  return false; // 阻止默认上传
+                }}
+              >
+                <Button icon={<UploadOutlined />} type="primary">
+                  上传字幕文件
+                </Button>
+              </Upload>
+              <Text type="secondary">
+                支持格式：.txt | 最大大小：5MB | 任务ID：{task.task_id}
+              </Text>
+            </Space>
+          </Card>
+
           {/* 执行进度时间线 */}
           {task.progress && (
             <>
@@ -344,55 +395,6 @@ const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
                       />
                     </div>
                   )}
-                </Space>
-              </Card>
-
-              {/* 字幕上传 */}
-              <Card title="字幕管理" size="small">
-                <Space direction="vertical" style={{ width: '100%' }}>
-                  <Alert
-                    message="字幕说明"
-                    description="请上传.txt格式的字幕文件，系统将自动同步到视频中"
-                    type="info"
-                    showIcon
-                  />
-                  <Upload
-                    accept=".txt"
-                    showUploadList={false}
-                    beforeUpload={async (file) => {
-                      // 检查文件类型
-                      if (!file.name.endsWith('.txt')) {
-                        message.error('请上传.txt格式的字幕文件');
-                        return false;
-                      }
-                      
-                      // 检查文件大小（限制5MB）
-                      if (file.size > 5 * 1024 * 1024) {
-                        message.error('字幕文件不能超过5MB');
-                        return false;
-                      }
-                      
-                      try {
-                        message.loading('正在上传字幕...');
-                        const response = await backendAccountService.uploadSubtitle(task.task_id, file);
-                        message.success(`字幕上传成功！文件大小: ${(response.file_size / 1024).toFixed(2)}KB`);
-                        
-                        // 可选：刷新任务结果
-                        loadTaskResult();
-                      } catch (error: any) {
-                        message.error(error.message || '字幕上传失败');
-                      }
-                      
-                      return false; // 阻止默认上传
-                    }}
-                  >
-                    <Button icon={<UploadOutlined />}>
-                      上传字幕文件
-                    </Button>
-                  </Upload>
-                  <Text type="secondary">
-                    支持格式：.txt | 最大大小：5MB
-                  </Text>
                 </Space>
               </Card>
 
