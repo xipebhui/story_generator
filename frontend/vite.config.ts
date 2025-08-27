@@ -12,7 +12,7 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0',  // Listen on all network interfaces
-    port: 3002,
+    port: 51083,
     strictPort: true,  // 严格使用指定端口
     proxy: {
       '/api': {
