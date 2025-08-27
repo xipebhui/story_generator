@@ -74,55 +74,31 @@
   margin-top: 8px;
 }
 
-/* 暗色模式支持 */
-@media (prefers-color-scheme: dark) {
-  .login-container {
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  }
-  
-  .login-card {
-    background: #161b22 !important;
-  }
-  
-  .login-header h1 {
-    background: linear-gradient(135deg, #58a6ff 0%, #7c3aed 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-  
-  .login-header p {
-    color: #8b949e;
-  }
-  
-  .register-tip {
-    color: #8b949e;
-  }
-  
-  .ant-tabs-tab {
-    color: #8b949e !important;
-  }
-  
-  .ant-tabs-tab-active .ant-tabs-tab-btn {
-    color: #58a6ff !important;
-  }
-  
-  .ant-input-affix-wrapper,
-  .ant-input {
-    background: #0d1117 !important;
-    border-color: #30363d !important;
-    color: #c9d1d9 !important;
-  }
-  
-  .ant-input-prefix {
-    color: #8b949e !important;
-  }
-  
-  .ant-input::placeholder {
-    color: #8b949e !important;
-  }
-  
-  .ant-form-item-explain-error {
-    color: #f85149 !important;
-  }
+/* 暗色模式已移除 - 仅使用亮色主题 */
+/* 确保登录页面表单使用白色背景 */
+.login-card .ant-input-affix-wrapper,
+.login-card .ant-input {
+  background: #ffffff !important;
+  border-color: #d9d9d9 !important;
+  color: #1a1a1a !important;
+}
+
+.login-card .ant-input-prefix {
+  color: #666666 !important;
+}
+
+.login-card .ant-input::placeholder {
+  color: #999999 !important;
+}
+
+.login-card .ant-tabs-tab {
+  color: #666666 !important;
+}
+
+.login-card .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #1890ff !important;
+}
+
+.login-card .ant-form-item-explain-error {
+  color: #ff4d4f !important;
 }

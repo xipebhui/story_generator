@@ -416,219 +416,110 @@
   background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
 }
 
-/* 暗色主题支持 - 跟随系统主题 */
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* 暗色主题变量 */
-    --bg-primary: #0d1117;
-    --bg-secondary: #161b22;
-    --bg-card: #161b22;
-    --text-primary: #c9d1d9;
-    --text-secondary: #8b949e;
-    --border-color: #30363d;
-    --shadow-color: rgba(0, 0, 0, 0.3);
-    --hover-bg: #21262d;
-  }
+/* 暗色主题已移除 - 仅使用亮色主题 */
+/* 确保所有组件使用亮色主题变量 */
+.ant-input,
+.ant-select-selector,
+.ant-input-affix-wrapper,
+.ant-picker,
+.ant-input-number,
+.ant-textarea {
+  background: #ffffff !important;
+  border-color: #d9d9d9 !important;
+  color: #1a1a1a !important;
+}
 
-  /* 页面背景 */
-  body {
-    background: var(--bg-primary) !important;
-    color: var(--text-primary) !important;
-  }
+.ant-input:hover,
+.ant-select-selector:hover,
+.ant-input-affix-wrapper:hover,
+.ant-picker:hover,
+.ant-input-number:hover,
+.ant-textarea:hover {
+  border-color: #40a9ff !important;
+}
 
-  /* 页面容器暗色适配 */
-  .page-container {
-    background: var(--bg-primary) !important;
-  }
+.ant-input:focus,
+.ant-select-selector:focus,
+.ant-input-affix-wrapper:focus,
+.ant-picker:focus,
+.ant-input-number:focus,
+.ant-textarea:focus {
+  border-color: #1890ff !important;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2) !important;
+}
 
-  /* Ant Design 组件暗色适配 */
-  .ant-card {
-    background: var(--bg-card) !important;
-    border-color: var(--border-color) !important;
-    color: var(--text-primary) !important;
-  }
+/* 确保文本区域使用白色背景 */
+.ant-input-textarea textarea,
+.ant-input-textarea .ant-input {
+  background: #ffffff !important;
+  color: #1a1a1a !important;
+}
 
-  .ant-modal-content {
-    background: var(--bg-card) !important;
-    color: var(--text-primary) !important;
-  }
+/* 下拉菜单确保白色背景 */
+.ant-select-dropdown,
+.ant-picker-dropdown,
+.ant-dropdown-menu {
+  background: #ffffff !important;
+}
 
-  .ant-drawer-content {
-    background: var(--bg-secondary) !important;
-  }
+.ant-select-item,
+.ant-picker-cell,
+.ant-dropdown-menu-item {
+  color: #1a1a1a !important;
+}
 
-  .ant-input, .ant-select-selector {
-    background: var(--bg-primary) !important;
-    border-color: var(--border-color) !important;
-    color: var(--text-primary) !important;
-  }
+.ant-select-item:hover,
+.ant-picker-cell:hover,
+.ant-dropdown-menu-item:hover {
+  background: #f5f5f5 !important;
+}
 
-  .ant-dropdown-menu {
-    background: var(--bg-card) !important;
-  }
+/* Modal确保白色背景 */
+.ant-modal-content {
+  background: #ffffff !important;
+}
 
-  .ant-dropdown-menu-item {
-    color: var(--text-primary) !important;
-  }
+.ant-modal-header,
+.ant-modal-body,
+.ant-modal-footer {
+  background: #ffffff !important;
+  color: #1a1a1a !important;
+}
 
-  /* 自定义组件暗色适配 */
-  .beautiful-card,
-  .workflow-card,
-  .task-card {
-    background: var(--bg-card) !important;
-    border-color: var(--border-color) !important;
-    color: var(--text-primary) !important;
-  }
+/* Drawer确保白色背景 */
+.ant-drawer-content {
+  background: #ffffff !important;
+}
 
-  .task-item {
-    background: var(--bg-card) !important;
-    border-color: var(--border-color) !important;
-  }
+.ant-drawer-header,
+.ant-drawer-body,
+.ant-drawer-footer {
+  background: #ffffff !important;
+  color: #1a1a1a !important;
+}
 
-  .workflow-select-card {
-    background: var(--bg-card) !important;
-    border-color: var(--border-color) !important;
-  }
+/* Card确保白色背景 */
+.ant-card {
+  background: #ffffff !important;
+  color: #1a1a1a !important;
+}
 
-  .stat-card {
-    background: var(--bg-card) !important;
-    border-color: var(--border-color) !important;
-  }
+/* Table确保白色背景 */
+.ant-table {
+  background: #ffffff !important;
+  color: #1a1a1a !important;
+}
 
-  .modern-header {
-    background: var(--bg-secondary) !important;
-    border-color: var(--border-color) !important;
-  }
+.ant-table-thead > tr > th {
+  background: #fafafa !important;
+  color: #1a1a1a !important;
+}
 
-  /* 文本颜色 */
-  .page-title,
-  .section-title,
-  .task-item-title,
-  .workflow-select-title,
-  .empty-state-title,
-  .modern-logo span {
-    color: var(--text-primary) !important;
-  }
+.ant-table-tbody > tr > td {
+  background: #ffffff !important;
+  color: #1a1a1a !important;
+}
 
-  .task-item-meta,
-  .workflow-select-desc,
-  .empty-state-desc,
-  .stat-card-label,
-  .auto-refresh-indicator {
-    color: var(--text-secondary) !important;
-  }
-
-  /* 空状态适配 */
-  .empty-state {
-    color: var(--text-secondary) !important;
-  }
-
-  /* 滚动条暗色 */
-  ::-webkit-scrollbar-track {
-    background: var(--bg-secondary) !important;
-  }
-  
-  /* Ant Design 详细组件样式修复 */
-  .ant-descriptions-item-label,
-  .ant-descriptions-item-content,
-  .ant-timeline-item-content,
-  .ant-timeline-item-tail,
-  .ant-tag,
-  .ant-tag.ant-tag-default {
-    color: var(--text-primary) !important;
-  }
-  
-  .ant-drawer-header-title,
-  .ant-drawer-title {
-    color: var(--text-primary) !important;
-  }
-  
-  .ant-tabs-tab-btn {
-    color: var(--text-secondary) !important;
-  }
-  
-  .ant-tabs-tab-active .ant-tabs-tab-btn {
-    color: #1890ff !important;
-  }
-  
-  /* 状态标签特殊处理 */
-  .status-tag {
-    color: inherit !important;
-  }
-  
-  .status-tag.pending {
-    background: rgba(139, 148, 158, 0.2) !important;
-    color: #8b949e !important;
-  }
-  
-  .status-tag.running {
-    background: rgba(24, 144, 255, 0.2) !important;
-    color: #58a6ff !important;
-  }
-  
-  .status-tag.completed {
-    background: rgba(45, 206, 137, 0.2) !important;
-    color: #3fb950 !important;
-  }
-  
-  .status-tag.failed {
-    background: rgba(245, 54, 92, 0.2) !important;
-    color: #f85149 !important;
-  }
-  
-  /* 任务详情弹窗 */
-  .ant-drawer-body {
-    background: var(--bg-secondary) !important;
-    color: var(--text-primary) !important;
-  }
-  
-  .ant-drawer-body * {
-    color: inherit;
-  }
-  
-  /* 描述列表 */
-  .ant-descriptions {
-    color: var(--text-primary) !important;
-  }
-  
-  .ant-descriptions-item > .ant-descriptions-item-container > .ant-descriptions-item-label {
-    color: var(--text-secondary) !important;
-    background: var(--bg-primary) !important;
-  }
-  
-  .ant-descriptions-item > .ant-descriptions-item-container > .ant-descriptions-item-content {
-    color: var(--text-primary) !important;
-    background: var(--bg-secondary) !important;
-  }
-  
-  /* 时间线组件 */
-  .ant-timeline-item-head {
-    background: var(--bg-card) !important;
-    border-color: var(--border-color) !important;
-  }
-  
-  .ant-timeline-item-tail {
-    background: var(--border-color) !important;
-  }
-  
-  /* 代码块 */
-  code {
-    background: var(--bg-primary) !important;
-    color: #58a6ff !important;
-    border-color: var(--border-color) !important;
-  }
-  
-  /* 分割线 */
-  .ant-divider {
-    border-color: var(--border-color) !important;
-  }
-  
-  .ant-divider-horizontal.ant-divider-with-text::before,
-  .ant-divider-horizontal.ant-divider-with-text::after {
-    border-color: var(--border-color) !important;
-  }
-  
-  .ant-divider-inner-text {
-    color: var(--text-secondary) !important;
-  }
+.ant-table-tbody > tr:hover > td {
+  background: #f5f5f5 !important;
 }

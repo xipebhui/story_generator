@@ -11,6 +11,8 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: #f6f9fc !important;
+  color: #1a1a1a !important;
 }
 
 code {
@@ -18,29 +20,254 @@ code {
     monospace;
 }
 
+/* 强制所有输入框使用白色背景 - 解决暗色问题 */
+input,
+textarea,
+select,
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-input-number,
+.ant-input-number-input,
+.ant-select-selector,
+.ant-textarea,
+.ant-textarea-affix-wrapper textarea,
+.ant-picker,
+.ant-picker-input input,
+.ant-input-textarea textarea,
+.ant-input-password input,
+.ant-upload.ant-upload-drag,
+.ant-upload.ant-upload-drag p.ant-upload-drag-icon + div,
+.ant-mentions,
+.ant-mentions > textarea,
+.ant-cascader-picker,
+.ant-form-item-control-input-content input,
+.ant-form-item-control-input-content textarea {
+  background-color: #ffffff !important;
+  background: #ffffff !important;
+  color: #1a1a1a !important;
+}
+
+/* 确保TextArea组件正确显示 */
+.ant-input-textarea,
+.ant-input-textarea-show-count::after {
+  background-color: #ffffff !important;
+  color: #1a1a1a !important;
+}
+
+.ant-input-textarea textarea {
+  background-color: #ffffff !important;
+  color: #1a1a1a !important;
+}
+
+/* 确保所有表单元素悬停和聚焦状态正确 */
+input:hover,
+textarea:hover,
+.ant-input:hover,
+.ant-input-affix-wrapper:hover,
+.ant-input-number:hover,
+.ant-select-selector:hover,
+.ant-textarea:hover,
+.ant-picker:hover {
+  border-color: #40a9ff !important;
+  background-color: #ffffff !important;
+}
+
+input:focus,
+textarea:focus,
+.ant-input:focus,
+.ant-input-affix-wrapper-focused,
+.ant-input-number-focused,
+.ant-select-focused .ant-select-selector,
+.ant-textarea:focus,
+.ant-picker-focused {
+  border-color: #1890ff !important;
+  background-color: #ffffff !important;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2) !important;
+}
+
+/* 确保禁用状态也使用浅色背景 */
+.ant-input[disabled],
+.ant-input-affix-wrapper-disabled,
+.ant-input-number-disabled,
+.ant-select-disabled .ant-select-selector,
+.ant-textarea[disabled],
+.ant-picker-input input[disabled] {
+  background-color: #f5f5f5 !important;
+  color: #999999 !important;
+}
+
+/* 确保所有下拉菜单使用白色背景 */
+.ant-select-dropdown,
+.ant-picker-dropdown,
+.ant-dropdown,
+.ant-dropdown-menu,
+.ant-cascader-dropdown,
+.ant-tooltip-inner,
+.ant-popover-inner {
+  background-color: #ffffff !important;
+  color: #1a1a1a !important;
+}
+
+.ant-select-item,
+.ant-select-item-option,
+.ant-dropdown-menu-item,
+.ant-picker-cell,
+.ant-cascader-menu-item {
+  color: #1a1a1a !important;
+  background-color: transparent !important;
+}
+
+.ant-select-item:hover,
+.ant-select-item-option:hover,
+.ant-dropdown-menu-item:hover,
+.ant-picker-cell:hover,
+.ant-cascader-menu-item:hover {
+  background-color: #f5f5f5 !important;
+}
+
+.ant-select-item-option-selected,
+.ant-select-item-selected {
+  background-color: #e6f7ff !important;
+}
+
+/* 确保所有Modal和Drawer使用白色背景 */
+.ant-modal-content,
+.ant-modal-header,
+.ant-modal-body,
+.ant-modal-footer,
+.ant-drawer-content,
+.ant-drawer-wrapper-body,
+.ant-drawer-header,
+.ant-drawer-body {
+  background-color: #ffffff !important;
+  color: #1a1a1a !important;
+}
+
+/* 确保Modal中的表单也使用白色背景 */
+.ant-modal-body .ant-input,
+.ant-modal-body .ant-input-textarea textarea,
+.ant-modal-body .ant-select-selector,
+.ant-drawer-body .ant-input,
+.ant-drawer-body .ant-input-textarea textarea,
+.ant-drawer-body .ant-select-selector {
+  background-color: #ffffff !important;
+  color: #1a1a1a !important;
+}
+
+/* 确保所有卡片使用白色背景 */
+.ant-card,
+.ant-card-body,
+.ant-card-head {
+  background-color: #ffffff !important;
+  color: #1a1a1a !important;
+}
+
+/* 确保表格使用正确的颜色 */
+.ant-table,
+.ant-table-container,
+.ant-table-content,
+.ant-table-thead > tr > th,
+.ant-table-tbody > tr > td {
+  background-color: #ffffff !important;
+  color: #1a1a1a !important;
+}
+
+.ant-table-thead > tr > th {
+  background-color: #fafafa !important;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background-color: #f5f5f5 !important;
+}
+
+/* 确保标签页使用正确颜色 */
+.ant-tabs-nav,
+.ant-tabs-content {
+  background-color: transparent !important;
+}
+
+.ant-tabs-tab {
+  color: #666666 !important;
+}
+
+.ant-tabs-tab-active,
+.ant-tabs-tab:hover {
+  color: #1890ff !important;
+}
+
+/* 确保按钮正确显示 */
+.ant-btn {
+  border-color: #d9d9d9;
+  background-color: #ffffff;
+  color: #1a1a1a;
+}
+
+.ant-btn:hover {
+  border-color: #40a9ff;
+  color: #40a9ff;
+}
+
+.ant-btn-primary {
+  background-color: #1890ff !important;
+  border-color: #1890ff !important;
+  color: #ffffff !important;
+}
+
+.ant-btn-primary:hover {
+  background-color: #40a9ff !important;
+  border-color: #40a9ff !important;
+}
+
 /* Ant Design 样式覆盖 */
 .ant-layout {
   min-height: 100vh;
+  background-color: #f6f9fc !important;
 }
 
 .ant-layout-header {
-  background: #001529;
+  background: #ffffff !important;
+  border-bottom: 1px solid #e8e8e8;
   padding: 0 24px;
 }
 
 .ant-layout-sider {
-  background: #fff;
+  background: #fff !important;
 }
 
 .ant-menu {
   height: 100%;
+  background: #fff !important;
+}
+
+.ant-menu-item {
+  color: #1a1a1a !important;
+}
+
+.ant-menu-item:hover {
+  color: #1890ff !important;
+  background-color: #f5f5f5 !important;
+}
+
+.ant-menu-item-selected {
+  color: #1890ff !important;
+  background-color: #e6f7ff !important;
 }
 
 /* 自定义样式 */
 .logo {
-  color: white;
+  color: #1890ff;
   font-size: 20px;
   font-weight: bold;
+}
+
+/* 特别确保PublishModal中的输入框使用白色背景 */
+.publish-modal .ant-input,
+.publish-modal .ant-input-textarea textarea,
+.publish-modal .ant-select-selector,
+.publish-modal .ant-input-number,
+.publish-modal .ant-picker {
+  background-color: #ffffff !important;
+  color: #1a1a1a !important;
 }
 
 /* 响应式设计 */
