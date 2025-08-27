@@ -27,3 +27,9 @@ aiofiles>=23.0.0
 
 # For Windows compatibility
 pywin32>=305 ; sys_platform == 'win32'
+
+# Authentication dependencies
+passlib[bcrypt]>=1.7.4
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt] 
+python-jose[cryptography]

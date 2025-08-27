@@ -21,6 +21,33 @@ Base = declarative_base()
 
 # ============ 数据模型定义 ============
 
+class User(Base):
+    """用户表 - 用于API认证"""
+    __tablename__ = 'users'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    api_key = Column(String(100), unique=True, nullable=False, index=True)
+    is_active = Column(Boolean, default=True, index=True)
+    status = Column(String(20), default='active', nullable=False)  # active/inactive/banned
+    last_login = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    updated_at = Column(DateTime, onupdate=func.now(), nullable=True)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典"""
+        return {
+            'id': self.id,
+            'username': self.username,
+            'api_key': self.api_key,
+            'is_active': self.is_active,
+            'status': self.status,
+            'last_login': self.last_login.isoformat() if self.last_login else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
 class PipelineTask(Base):
     """Pipeline任务表（原task_history，包含所有任务）"""
     __tablename__ = 'pipeline_tasks'
@@ -417,6 +444,42 @@ class DatabaseManager:
                 .filter_by(status='pending')\
                 .limit(limit)\
                 .all()
+    
+    # ============ 用户管理 ============
+    
+    def create_user(self, user_data: Dict[str, Any]) -> User:
+        """创建用户"""
+        with self.get_session() as session:
+            user = User(**user_data)
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            return user
+    
+    def get_user_by_username(self, username: str) -> Optional[User]:
+        """根据用户名获取用户"""
+        with self.get_session() as session:
+            return session.query(User).filter_by(username=username).first()
+    
+    def get_user_by_api_key(self, api_key: str) -> Optional[User]:
+        """根据API Key获取用户"""
+        with self.get_session() as session:
+            return session.query(User).filter_by(api_key=api_key, is_active=True).first()
+    
+    def update_user(self, user_id: int, update_data: Dict[str, Any]) -> Optional[User]:
+        """更新用户信息"""
+        with self.get_session() as session:
+            user = session.query(User).filter_by(id=user_id).first()
+            if not user:
+                return None
+            
+            for key, value in update_data.items():
+                if hasattr(user, key):
+                    setattr(user, key, value)
+            
+            session.commit()
+            session.refresh(user)
+            return user
     
     # ============ 统计功能 ============
     

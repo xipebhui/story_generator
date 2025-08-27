@@ -223,6 +223,7 @@ class TaskStatus(BaseModel):
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     total_duration: Optional[float] = None
+    error: Optional[str] = None  # 错误信息
 
 class TaskResult(BaseModel):
     task_id: str
@@ -309,7 +310,20 @@ async def run_pipeline_async(task_id: str, request: PipelineRequest):
         stage1 = await loop.run_in_executor(None, pipeline._run_story_generation)
         pipeline.stages_results.append(stage1)
         progress['故事二创'] = '成功' if stage1.status == StageStatus.SUCCESS else '失败'
-        db_manager.update_task(task_id, {'progress': progress})
+        
+        # 如果故事二创失败，记录具体错误
+        update_data = {'progress': progress}
+        if stage1.status != StageStatus.SUCCESS:
+            error_msg = stage1.error if stage1.error else "故事二创阶段失败"
+            
+            # 检查是否是字幕获取失败
+            if "transcript" in error_msg.lower() or "subtitle" in error_msg.lower():
+                error_msg = f"字幕获取失败: {error_msg}. 您可以手动上传字幕文件后重试。"
+            
+            update_data['error'] = error_msg
+            logger.error(f"[Task {task_id}] 故事二创失败: {error_msg}")
+        
+        db_manager.update_task(task_id, update_data)
         
         if stage1.status == StageStatus.SUCCESS:
             # 阶段2: 语音生成
@@ -320,7 +334,15 @@ async def run_pipeline_async(task_id: str, request: PipelineRequest):
             stage2 = await loop.run_in_executor(None, pipeline._run_voice_generation)
             pipeline.stages_results.append(stage2)
             progress['语音生成'] = '成功' if stage2.status == StageStatus.SUCCESS else '失败'
-            db_manager.update_task(task_id, {'progress': progress})
+            
+            # 如果语音生成失败，记录错误
+            update_data = {'progress': progress}
+            if stage2.status != StageStatus.SUCCESS:
+                error_msg = stage2.error if stage2.error else "语音生成阶段失败"
+                update_data['error'] = error_msg
+                logger.error(f"[Task {task_id}] 语音生成失败: {error_msg}")
+            
+            db_manager.update_task(task_id, update_data)
             
             if stage2.status == StageStatus.SUCCESS:
                 # 阶段3: 剪映草稿生成
@@ -331,7 +353,15 @@ async def run_pipeline_async(task_id: str, request: PipelineRequest):
                 stage3 = await loop.run_in_executor(None, pipeline._run_draft_generation)
                 pipeline.stages_results.append(stage3)
                 progress['剪映草稿生成'] = '成功' if stage3.status == StageStatus.SUCCESS else '失败'
-                db_manager.update_task(task_id, {'progress': progress})
+                
+                # 如果剪映草稿生成失败，记录错误
+                update_data = {'progress': progress}
+                if stage3.status != StageStatus.SUCCESS:
+                    error_msg = stage3.error if stage3.error else "剪映草稿生成阶段失败"
+                    update_data['error'] = error_msg
+                    logger.error(f"[Task {task_id}] 剪映草稿生成失败: {error_msg}")
+                
+                db_manager.update_task(task_id, update_data)
                 
                 if stage3.status == StageStatus.SUCCESS and request.export_video:
                     # 阶段4: 视频导出
@@ -342,7 +372,15 @@ async def run_pipeline_async(task_id: str, request: PipelineRequest):
                     stage4 = await loop.run_in_executor(None, pipeline._run_video_export)
                     pipeline.stages_results.append(stage4)
                     progress['视频导出'] = '成功' if stage4.status == StageStatus.SUCCESS else '失败'
-                    db_manager.update_task(task_id, {'progress': progress})
+                    
+                    # 如果视频导出失败，记录错误
+                    update_data = {'progress': progress}
+                    if stage4.status != StageStatus.SUCCESS:
+                        error_msg = stage4.error if stage4.error else "视频导出阶段失败"
+                        update_data['error'] = error_msg
+                        logger.error(f"[Task {task_id}] 视频导出失败: {error_msg}")
+                    
+                    db_manager.update_task(task_id, update_data)
         
         pipeline.end_time = datetime.now()
         total_duration = (pipeline.end_time - pipeline.start_time).total_seconds()
@@ -478,7 +516,8 @@ async def get_status(task_id: str):
         created_at=task_dict['created_at'],
         started_at=task_dict.get('started_at'),
         completed_at=task_dict.get('completed_at'),
-        total_duration=task_dict.get('total_duration')
+        total_duration=task_dict.get('total_duration'),
+        error=task_dict.get('error')  # 添加错误信息
     )
 
 @app.get("/api/pipeline/result/{task_id}")

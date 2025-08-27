@@ -9,7 +9,8 @@ import os
 import sys
 import platform
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Query, File, UploadFile, Form
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Query, File, UploadFile, Form, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 import asyncio
@@ -48,9 +49,13 @@ except ImportError:
     logger = logging.getLogger(__name__)
 
 # 导入数据库和服务模块
-from database import init_database, get_db_manager, PipelineTask, PublishTask
+from database import init_database, get_db_manager, PipelineTask, PublishTask, User
 from account_service import get_account_service
 from publish_service import get_publish_service
+from auth_middleware import (
+    get_current_user, require_auth, hash_password, verify_password,
+    generate_api_key, get_invite_code, get_auth_enabled
+)
 
 # 初始化数据库
 db_manager = init_database()
@@ -190,6 +195,16 @@ logger.info("=" * 60)
 
 app = FastAPI(title="Video Pipeline API with DB", version="0.2.0")
 
+# 配置CORS
+if os.environ.get('CORS_ENABLED', 'true').lower() == 'true':
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[os.environ.get('CORS_ORIGIN', 'http://localhost:3000')],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
 # ============ 应用生命周期事件 ============
 @app.on_event("startup")
 async def startup_event():
@@ -223,6 +238,7 @@ class TaskStatus(BaseModel):
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     total_duration: Optional[float] = None
+    error: Optional[str] = None  # 错误信息
 
 class TaskResult(BaseModel):
     task_id: str
@@ -254,6 +270,29 @@ class HistoryQuery(BaseModel):
     end_date: Optional[datetime] = None
     page: int = 1
     page_size: int = 20
+
+# ============ 认证相关模型 ============
+class RegisterRequest(BaseModel):
+    """注册请求"""
+    username: str
+    password: str
+    invite_code: str
+
+class LoginRequest(BaseModel):
+    """登录请求"""
+    username: str
+    password: str
+
+class ChangePasswordRequest(BaseModel):
+    """修改密码请求"""
+    old_password: str
+    new_password: str
+
+class AuthResponse(BaseModel):
+    """认证响应"""
+    username: str
+    api_key: str
+    message: str
 
 # ============ Pipeline执行 ============
 
@@ -309,7 +348,20 @@ async def run_pipeline_async(task_id: str, request: PipelineRequest):
         stage1 = await loop.run_in_executor(None, pipeline._run_story_generation)
         pipeline.stages_results.append(stage1)
         progress['故事二创'] = '成功' if stage1.status == StageStatus.SUCCESS else '失败'
-        db_manager.update_task(task_id, {'progress': progress})
+        
+        # 如果故事二创失败，记录具体错误
+        update_data = {'progress': progress}
+        if stage1.status != StageStatus.SUCCESS:
+            error_msg = stage1.error if stage1.error else "故事二创阶段失败"
+            
+            # 检查是否是字幕获取失败
+            if "transcript" in error_msg.lower() or "subtitle" in error_msg.lower():
+                error_msg = f"字幕获取失败: {error_msg}. 您可以手动上传字幕文件后重试。"
+            
+            update_data['error'] = error_msg
+            logger.error(f"[Task {task_id}] 故事二创失败: {error_msg}")
+        
+        db_manager.update_task(task_id, update_data)
         
         if stage1.status == StageStatus.SUCCESS:
             # 阶段2: 语音生成
@@ -320,7 +372,15 @@ async def run_pipeline_async(task_id: str, request: PipelineRequest):
             stage2 = await loop.run_in_executor(None, pipeline._run_voice_generation)
             pipeline.stages_results.append(stage2)
             progress['语音生成'] = '成功' if stage2.status == StageStatus.SUCCESS else '失败'
-            db_manager.update_task(task_id, {'progress': progress})
+            
+            # 如果语音生成失败，记录错误
+            update_data = {'progress': progress}
+            if stage2.status != StageStatus.SUCCESS:
+                error_msg = stage2.error if stage2.error else "语音生成阶段失败"
+                update_data['error'] = error_msg
+                logger.error(f"[Task {task_id}] 语音生成失败: {error_msg}")
+            
+            db_manager.update_task(task_id, update_data)
             
             if stage2.status == StageStatus.SUCCESS:
                 # 阶段3: 剪映草稿生成
@@ -331,7 +391,15 @@ async def run_pipeline_async(task_id: str, request: PipelineRequest):
                 stage3 = await loop.run_in_executor(None, pipeline._run_draft_generation)
                 pipeline.stages_results.append(stage3)
                 progress['剪映草稿生成'] = '成功' if stage3.status == StageStatus.SUCCESS else '失败'
-                db_manager.update_task(task_id, {'progress': progress})
+                
+                # 如果剪映草稿生成失败，记录错误
+                update_data = {'progress': progress}
+                if stage3.status != StageStatus.SUCCESS:
+                    error_msg = stage3.error if stage3.error else "剪映草稿生成阶段失败"
+                    update_data['error'] = error_msg
+                    logger.error(f"[Task {task_id}] 剪映草稿生成失败: {error_msg}")
+                
+                db_manager.update_task(task_id, update_data)
                 
                 if stage3.status == StageStatus.SUCCESS and request.export_video:
                     # 阶段4: 视频导出
@@ -342,7 +410,15 @@ async def run_pipeline_async(task_id: str, request: PipelineRequest):
                     stage4 = await loop.run_in_executor(None, pipeline._run_video_export)
                     pipeline.stages_results.append(stage4)
                     progress['视频导出'] = '成功' if stage4.status == StageStatus.SUCCESS else '失败'
-                    db_manager.update_task(task_id, {'progress': progress})
+                    
+                    # 如果视频导出失败，记录错误
+                    update_data = {'progress': progress}
+                    if stage4.status != StageStatus.SUCCESS:
+                        error_msg = stage4.error if stage4.error else "视频导出阶段失败"
+                        update_data['error'] = error_msg
+                        logger.error(f"[Task {task_id}] 视频导出失败: {error_msg}")
+                    
+                    db_manager.update_task(task_id, update_data)
         
         pipeline.end_time = datetime.now()
         total_duration = (pipeline.end_time - pipeline.start_time).total_seconds()
@@ -419,8 +495,130 @@ async def run_pipeline_async(task_id: str, request: PipelineRequest):
 
 # ============ API端点 ============
 
+# ============ 认证接口 ============
+
+@app.post("/api/auth/register", response_model=AuthResponse)
+async def register(request: RegisterRequest):
+    """用户注册"""
+    # 验证邀请码
+    if request.invite_code != get_invite_code():
+        raise HTTPException(status_code=400, detail="无效的邀请码")
+    
+    # 检查用户名是否已存在
+    db_manager = get_db_manager()
+    existing_user = db_manager.get_user_by_username(request.username)
+    if existing_user:
+        raise HTTPException(status_code=400, detail="用户名已存在")
+    
+    # 创建新用户
+    user_data = {
+        'username': request.username,
+        'password_hash': hash_password(request.password),
+        'api_key': generate_api_key(),
+        'is_active': True
+    }
+    
+    try:
+        user = db_manager.create_user(user_data)
+        return AuthResponse(
+            username=user.username,
+            api_key=user.api_key,
+            message="注册成功"
+        )
+    except Exception as e:
+        logger.error(f"注册失败: {e}")
+        raise HTTPException(status_code=500, detail="注册失败，请稍后重试")
+
+@app.post("/api/auth/login", response_model=AuthResponse)
+async def login(request: LoginRequest):
+    """用户登录"""
+    db_manager = get_db_manager()
+    user = db_manager.get_user_by_username(request.username)
+    
+    if not user or not verify_password(request.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+    
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="用户已被禁用")
+    
+    # 更新最后登录时间
+    from datetime import datetime
+    db_manager.update_user(user.id, {'last_login': datetime.now()})
+    
+    return AuthResponse(
+        username=user.username,
+        api_key=user.api_key,
+        message="登录成功"
+    )
+
+@app.post("/api/auth/change-password", response_model=Dict[str, str])
+async def change_password(request: ChangePasswordRequest, current_user: User = Depends(require_auth)):
+    """修改密码（需要认证）"""
+    db_manager = get_db_manager()
+    
+    # 验证旧密码
+    if not verify_password(request.old_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="旧密码错误")
+    
+    # 更新密码
+    update_data = {
+        'password_hash': hash_password(request.new_password)
+    }
+    
+    updated_user = db_manager.update_user(current_user.id, update_data)
+    if updated_user:
+        return {"message": "密码修改成功"}
+    else:
+        raise HTTPException(status_code=500, detail="密码修改失败")
+
+@app.post("/api/auth/reset-api-key", response_model=AuthResponse)
+async def reset_api_key(current_user: User = Depends(require_auth)):
+    """重置API Key（需要认证）"""
+    db_manager = get_db_manager()
+    
+    # 生成新的API Key
+    new_api_key = generate_api_key()
+    update_data = {
+        'api_key': new_api_key
+    }
+    
+    updated_user = db_manager.update_user(current_user.id, update_data)
+    if updated_user:
+        return AuthResponse(
+            username=updated_user.username,
+            api_key=updated_user.api_key,
+            message="API Key重置成功"
+        )
+    else:
+        raise HTTPException(status_code=500, detail="API Key重置失败")
+
+@app.get("/api/auth/me")
+async def get_current_user_info(current_user: User = Depends(require_auth)):
+    """获取当前用户信息（需要认证）"""
+    # 确定用户状态
+    if not current_user.is_active:
+        status = "inactive"
+    elif hasattr(current_user, 'status'):
+        status = current_user.status
+    else:
+        status = "active"
+    
+    return {
+        "username": current_user.username,
+        "api_key": current_user.api_key,
+        "created_at": current_user.created_at.isoformat() if current_user.created_at else None,
+        "last_login": current_user.last_login.isoformat() if current_user.last_login else None,
+        "status": status
+    }
+
+# ============ Pipeline接口 ============
+
 @app.post("/api/pipeline/run")
-async def run_pipeline(request: PipelineRequest, background_tasks: BackgroundTasks):
+async def run_pipeline(
+    request: PipelineRequest, 
+    background_tasks: BackgroundTasks,
+    current_user: Optional[User] = Depends(get_current_user)
+):
     """运行Pipeline（支持数据库记录）"""
     # 生成任务ID - 包含 account_name（如果提供）
     if request.account_name:
@@ -463,7 +661,10 @@ async def run_pipeline(request: PipelineRequest, background_tasks: BackgroundTas
     }
 
 @app.get("/api/pipeline/status/{task_id}")
-async def get_status(task_id: str):
+async def get_status(
+    task_id: str,
+    current_user: Optional[User] = Depends(get_current_user)
+):
     """获取任务状态（从数据库）"""
     task = db_manager.get_task(task_id)
     if not task:
@@ -478,11 +679,15 @@ async def get_status(task_id: str):
         created_at=task_dict['created_at'],
         started_at=task_dict.get('started_at'),
         completed_at=task_dict.get('completed_at'),
-        total_duration=task_dict.get('total_duration')
+        total_duration=task_dict.get('total_duration'),
+        error=task_dict.get('error')  # 添加错误信息
     )
 
 @app.get("/api/pipeline/result/{task_id}")
-async def get_result(task_id: str):
+async def get_result(
+    task_id: str,
+    current_user: Optional[User] = Depends(get_current_user)
+):
     """获取任务结果（从数据库）"""
     task = db_manager.get_task(task_id)
     if not task:
@@ -548,13 +753,19 @@ async def get_history(
     }
 
 @app.get("/api/pipeline/statistics")
-async def get_statistics(creator_id: Optional[str] = Query(None)):
+async def get_statistics(
+    creator_id: Optional[str] = Query(None),
+    current_user: Optional[User] = Depends(get_current_user)
+):
     """获取统计信息"""
     stats = db_manager.get_statistics(creator_id)
     return stats
 
 @app.delete("/api/pipeline/task/{task_id}")
-async def delete_task(task_id: str):
+async def delete_task(
+    task_id: str,
+    current_user: Optional[User] = Depends(get_current_user)
+):
     """删除任务（仅删除数据库记录）
     
     Args:
@@ -604,7 +815,11 @@ async def delete_task(task_id: str):
     }
 
 @app.post("/api/pipeline/retry/{task_id}")
-async def retry_task(task_id: str, background_tasks: BackgroundTasks):
+async def retry_task(
+    task_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: Optional[User] = Depends(get_current_user)
+):
     """重试失败的任务
     
     为失败的任务创建新的任务ID并重新执行，保留原始参数
@@ -687,6 +902,74 @@ async def retry_task(task_id: str, background_tasks: BackgroundTasks):
     }
 
 # ============ 发布相关端点 ============
+
+@app.post("/api/pipeline/upload-subtitle")
+async def upload_subtitle(
+    task_id: str = Form(...),
+    file: UploadFile = File(...),
+    current_user: Optional[User] = Depends(get_current_user)
+):
+    """
+    手动上传字幕文件
+    字幕文件将保存到任务的 cache/video_id/raw/subtitle.txt 路径
+    """
+    try:
+        # 获取任务信息
+        task = db_manager.get_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        
+        # 获取video_id - 从任务记录中直接获取
+        video_id = task.video_id
+        
+        # 创建raw目录
+        raw_dir = Path(f"cache/{video_id}/raw")
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 保存字幕文件
+        subtitle_path = raw_dir / "subtitle.txt"
+        
+        # 读取上传的内容
+        content = await file.read()
+        
+        # 尝试解码为文本
+        try:
+            text_content = content.decode('utf-8')
+        except UnicodeDecodeError:
+            # 尝试其他编码
+            try:
+                text_content = content.decode('gbk')
+            except:
+                text_content = content.decode('utf-8', errors='ignore')
+        
+        # 保存文件
+        with open(subtitle_path, 'w', encoding='utf-8') as f:
+            f.write(text_content)
+        
+        logger.info(f"✅ 字幕文件上传成功: {subtitle_path}")
+        
+        # 更新任务状态，标记已有手动字幕
+        update_data = {
+            'progress': json.dumps({
+                'manual_subtitle': True,
+                'subtitle_uploaded_at': datetime.now().isoformat()
+            })
+        }
+        db_manager.update_task(task_id, update_data)
+        
+        return {
+            "message": "字幕文件上传成功",
+            "task_id": task_id,
+            "video_id": video_id,
+            "subtitle_path": str(subtitle_path.absolute()),
+            "subtitle_length": len(text_content)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"上传字幕文件失败: {e}")
+        raise HTTPException(status_code=500, detail=f"上传失败: {str(e)}")
 
 @app.post("/api/publish/upload-thumbnail")
 async def upload_thumbnail(
@@ -915,7 +1198,8 @@ async def get_publish_history(
     task_id: Optional[str] = Query(None),
     account_id: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
-    limit: int = Query(100, ge=1, le=500)
+    limit: int = Query(100, ge=1, le=500),
+    current_user: Optional[User] = Depends(get_current_user)
 ):
     """查询发布历史"""
     history = publish_service.get_publish_history(

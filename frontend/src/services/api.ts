@@ -14,7 +14,11 @@ const api: AxiosInstance = axios.create({
 // 请求拦截器
 api.interceptors.request.use(
   (config) => {
-    // 可以在这里添加token等认证信息
+    // 添加认证信息
+    const apiKey = localStorage.getItem('api_key');
+    if (apiKey) {
+      config.headers['Authorization'] = `Bearer ${apiKey}`;
+    }
     return config;
   },
   (error) => {
@@ -35,6 +39,13 @@ api.interceptors.response.use(
       switch (status) {
         case 400:
           message.error(data.detail || '请求参数错误');
+          break;
+        case 401:
+          message.error(data.detail || '认证失败，请重新登录');
+          // 清除本地认证信息并跳转到登录页
+          localStorage.removeItem('api_key');
+          localStorage.removeItem('username');
+          window.location.href = '/login';
           break;
         case 404:
           message.error(data.detail || '资源不存在');

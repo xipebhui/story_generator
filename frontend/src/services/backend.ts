@@ -7,13 +7,34 @@ const API_BASE = '/api'; // 通过vite代理到 http://localhost:51082/api
 // 通用请求函数
 async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
   try {
+    // 获取API Key
+    const apiKey = localStorage.getItem('api_key');
+    
+    // 构建请求头，确保认证头不被覆盖
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...options?.headers as any,
+    };
+    
+    // 添加认证头 - 放在最后确保不被覆盖
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+    
     const response = await fetch(`${API_BASE}${url}`, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options?.headers,
-      },
+      headers,
     });
+
+    // 处理401未授权错误
+    if (response.status === 401) {
+      // 清除本地存储的认证信息
+      localStorage.removeItem('api_key');
+      localStorage.removeItem('username');
+      // 跳转到登录页
+      window.location.href = '/login';
+      throw new Error('认证失败，请重新登录');
+    }
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ detail: '请求失败' }));
@@ -223,8 +244,8 @@ class BackendPipelineService {
         const status = await this.getTaskStatus(taskId);
         onUpdate(status);
         
-        // 如果任务还在运行，继续轮询
-        if (status.status === 'pending' || status.status === 'processing') {
+        // 如果任务还在运行，继续轮询 - 直接检查后端返回的实际状态
+        if (status.status === 'pending' || status.status === 'running' || status.status === 'processing') {
           setTimeout(poll, interval);
         }
       } catch (error) {
@@ -258,10 +279,28 @@ class BackendAccountService {
     formData.append('task_id', taskId);
     formData.append('file', file);
     
+    // 获取认证信息
+    const apiKey = localStorage.getItem('api_key');
+    const headers: Record<string, string> = {};
+    
+    // 添加认证头（注意：使用FormData时不要设置Content-Type）
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+    
     const response = await fetch('/api/publish/upload-thumbnail', {
       method: 'POST',
+      headers,
       body: formData
     });
+    
+    // 处理401未授权错误
+    if (response.status === 401) {
+      localStorage.removeItem('api_key');
+      localStorage.removeItem('username');
+      window.location.href = '/login';
+      throw new Error('认证失败，请重新登录');
+    }
     
     if (!response.ok) {
       const error = await response.json();

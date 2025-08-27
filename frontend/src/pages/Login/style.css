@@ -1,0 +1,128 @@
+/* 登录页面样式 */
+
+.login-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
+}
+
+.login-box {
+  width: 100%;
+  max-width: 400px;
+}
+
+.login-card {
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.login-header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 8px;
+}
+
+.login-header p {
+  color: #666;
+  font-size: 14px;
+  margin: 0;
+}
+
+/* 表单样式 */
+.ant-form-item {
+  margin-bottom: 20px;
+}
+
+.ant-input-affix-wrapper-lg {
+  border-radius: 8px;
+  height: 48px;
+}
+
+.ant-input-lg {
+  height: 48px;
+  border-radius: 8px;
+}
+
+.ant-btn-lg {
+  height: 48px;
+  font-size: 16px;
+  font-weight: 500;
+  border-radius: 8px;
+}
+
+.ant-tabs-tab {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.register-tip {
+  text-align: center;
+  color: #999;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+/* 暗色模式支持 */
+@media (prefers-color-scheme: dark) {
+  .login-container {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  }
+  
+  .login-card {
+    background: #161b22 !important;
+  }
+  
+  .login-header h1 {
+    background: linear-gradient(135deg, #58a6ff 0%, #7c3aed 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  
+  .login-header p {
+    color: #8b949e;
+  }
+  
+  .register-tip {
+    color: #8b949e;
+  }
+  
+  .ant-tabs-tab {
+    color: #8b949e !important;
+  }
+  
+  .ant-tabs-tab-active .ant-tabs-tab-btn {
+    color: #58a6ff !important;
+  }
+  
+  .ant-input-affix-wrapper,
+  .ant-input {
+    background: #0d1117 !important;
+    border-color: #30363d !important;
+    color: #c9d1d9 !important;
+  }
+  
+  .ant-input-prefix {
+    color: #8b949e !important;
+  }
+  
+  .ant-input::placeholder {
+    color: #8b949e !important;
+  }
+  
+  .ant-form-item-explain-error {
+    color: #f85149 !important;
+  }
+}

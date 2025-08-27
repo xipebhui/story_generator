@@ -15,7 +15,9 @@ import {
   Badge,
   Tooltip,
   Progress,
-  Modal
+  Modal,
+  Dropdown,
+  Menu
 } from 'antd';
 import {
   PlusOutlined,
@@ -34,7 +36,10 @@ import {
   UserOutlined,
   ReloadOutlined,
   ExclamationCircleOutlined,
-  DeleteOutlined
+  DeleteOutlined,
+  LogoutOutlined,
+  KeyOutlined,
+  SettingOutlined
 } from '@ant-design/icons';
 import CreateTaskModal from '../../components/CreateTaskModal';
 import TaskDetailDrawer from '../../components/TaskDetailDrawer';
@@ -44,6 +49,8 @@ import PublishStatus from '../../components/PublishStatus';
 import { pipelineAdapter } from '../../services/pipelineAdapter';
 import { Task, TaskStatus } from '../../types/task';
 import { workflows } from '../../config/workflows';
+import { authService } from '../../services/auth';
+import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/zh-cn';
@@ -57,6 +64,7 @@ const { TabPane } = Tabs;
 const { Option } = Select;
 
 const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [createModalVisible, setCreateModalVisible] = useState(false);
@@ -249,13 +257,31 @@ const Dashboard: React.FC = () => {
                 onClick={async () => {
                   try {
                     message.loading('正在重试任务...');
-                    const newTask = await pipelineAdapter.retryTask(task.task_id);
-                    message.success(`任务重试成功，新任务ID: ${newTask.task_id}`);
-                    // 刷新任务列表
-                    loadTasks();
+                    // 立即更新UI状态为running
+                    setTasks(prevTasks => 
+                      prevTasks.map(t => 
+                        t.task_id === task.task_id 
+                          ? { ...t, status: 'pending' as TaskStatus, progress: 0, error_message: undefined }
+                          : t
+                      )
+                    );
+                    
+                    // 调用重试接口
+                    const updatedTask = await pipelineAdapter.retryTask(task.task_id);
+                    
+                    // 更新本地任务状态
+                    setTasks(prevTasks => 
+                      prevTasks.map(t => 
+                        t.task_id === task.task_id ? updatedTask : t
+                      )
+                    );
+                    
+                    message.success('任务重试成功');
                   } catch (error) {
                     message.error('重试任务失败');
                     console.error('重试任务失败:', error);
+                    // 失败时恢复原状态
+                    loadTasks();
                   }
                 }}
               >
@@ -310,6 +336,32 @@ const Dashboard: React.FC = () => {
 
   const filteredTasks = getFilteredTasks();
 
+  // 处理登出
+  const handleLogout = () => {
+    authService.logout();
+    navigate('/login');
+  };
+
+  // 用户下拉菜单
+  const userMenu = (
+    <Menu>
+      <Menu.Item key="user" disabled>
+        <UserOutlined /> {authService.getUsername()}
+      </Menu.Item>
+      <Menu.Divider />
+      <Menu.Item key="apikey" icon={<KeyOutlined />} onClick={() => message.info('API密钥管理功能开发中')}>
+        API密钥管理
+      </Menu.Item>
+      <Menu.Item key="settings" icon={<SettingOutlined />} onClick={() => message.info('设置功能开发中')}>
+        设置
+      </Menu.Item>
+      <Menu.Divider />
+      <Menu.Item key="logout" icon={<LogoutOutlined />} onClick={handleLogout}>
+        退出登录
+      </Menu.Item>
+    </Menu>
+  );
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
       {/* 头部 */}
@@ -331,6 +383,11 @@ const Dashboard: React.FC = () => {
               >
                 创建任务
               </Button>
+              <Dropdown overlay={userMenu} placement="bottomRight">
+                <Button type="text" icon={<UserOutlined />}>
+                  {authService.getUsername()}
+                </Button>
+              </Dropdown>
             </Space>
           </div>
         </div>

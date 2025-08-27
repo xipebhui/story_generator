@@ -1,6 +1,7 @@
 // Pipeline适配器 - 将前端期望的接口适配到实际后端
 import { Task, TaskStatus, TaskResult } from '../types/task';
 import { backendPipelineService, taskManager, TaskStatus as BackendTaskStatus, backendAccountService } from './backend';
+import api from './api';
 
 class PipelineAdapter {
   private tasks: Map<string, Task> = new Map();
@@ -66,7 +67,7 @@ class PipelineAdapter {
           const task: Task = {
             task_id: backendTask.task_id,
             workflow: this.detectWorkflow(backendTask),
-            status: this.mapBackendStatus(backendTask.status),
+            status: backendTask.status as TaskStatus,
             progress: backendTask.progress,
             current_stage: backendTask.current_stage,
             created_at: backendTask.created_at || backendTask.start_time || new Date().toISOString(),
@@ -100,34 +101,32 @@ class PipelineAdapter {
     };
   }
 
-  // 重试失败的任务
+  // 重试失败的任务 - 在原任务上重试，不创建新任务
   async retryTask(taskId: string): Promise<Task> {
     try {
       // 获取原任务信息
       const originalTask = this.tasks.get(taskId);
+      if (!originalTask) {
+        throw new Error('任务不存在');
+      }
       
       // 获取原任务的account_name参数
       const accountName = originalTask?.params?.account_name;
       
       // 调用后端重试接口，传递account_name
-      const response = await backendPipelineService.retryPipeline(taskId, accountName);
+      await backendPipelineService.retryPipeline(taskId, accountName);
       
-      const newTask: Task = {
-        task_id: response.task_id,
-        workflow: originalTask?.workflow || 'youtube-story',
-        status: 'pending',
-        progress: 0,
-        created_at: new Date().toISOString(),
-        params: originalTask?.params || {}
-      };
+      // 更新原任务状态为pending，重置进度
+      originalTask.status = 'pending';
+      originalTask.progress = 0;
+      originalTask.current_stage = null;
+      originalTask.error_message = undefined;
+      originalTask.completed_at = undefined;
       
-      // 保存新任务
-      this.tasks.set(response.task_id, newTask);
+      // 重新开始轮询原任务状态
+      this.startStatusPolling(taskId);
       
-      // 开始轮询新任务状态
-      this.startStatusPolling(response.task_id);
-      
-      return newTask;
+      return originalTask;
     } catch (error) {
       console.error('重试任务失败:', error);
       throw error;
@@ -168,7 +167,7 @@ class PipelineAdapter {
         task = {
           task_id: backendStatus.task_id,
           workflow: this.detectWorkflow(backendStatus),
-          status: this.mapBackendStatus(backendStatus.status),
+          status: backendStatus.status as TaskStatus,
           progress: backendStatus.progress,
           current_stage: backendStatus.current_stage,
           created_at: backendStatus.created_at || backendStatus.start_time || new Date().toISOString(),
@@ -202,25 +201,22 @@ class PipelineAdapter {
     let result = this.results.get(taskId);
     
     if (!result) {
-      // 从后端获取任务结果
+      // 从后端获取任务结果 - 使用统一的 api 服务
       try {
-        // 直接调用 /api/pipeline/result/{task_id} 接口
-        const response = await fetch(`/api/pipeline/result/${taskId}`);
-        if (response.ok) {
-          const data = await response.json();
-          result = {
-            task_id: data.task_id,
-            status: data.status,
-            video_path: data.video_path || '',
-            draft_path: data.draft_path || '',
-            audio_path: data.audio_path || '',
-            story_path: data.story_path || '',
-            preview_url: data.preview_url || '',
-            youtube_metadata: data.youtube_metadata,
-            error: data.error
-          };
-          this.results.set(taskId, result);
-        }
+        const data = await api.get(`/pipeline/result/${taskId}`);
+        
+        result = {
+          task_id: data.task_id,
+          status: data.status,
+          video_path: data.video_path || '',
+          draft_path: data.draft_path || '',
+          audio_path: data.audio_path || '',
+          story_path: data.story_path || '',
+          preview_url: data.preview_url || '',
+          youtube_metadata: data.youtube_metadata,
+          error: data.error
+        };
+        this.results.set(taskId, result);
       } catch (error) {
         console.error('获取任务结果失败:', error);
       }
@@ -286,8 +282,8 @@ class PipelineAdapter {
     const stopPolling = backendPipelineService.pollTaskStatus(
       taskId,
       (status: BackendTaskStatus) => {
-        // 更新任务状态
-        task.status = this.mapBackendStatus(status.status);
+        // 更新任务状态 - 直接使用后端状态
+        task.status = status.status as TaskStatus;
         task.progress = status.progress;
         task.current_stage = status.current_stage || '处理中';
         
@@ -344,11 +340,6 @@ class PipelineAdapter {
     this.pollHandlers.set(taskId, stopPolling);
   }
 
-  // 直接使用后端状态，不做映射
-  private mapBackendStatus(backendStatus: string): TaskStatus {
-    // 直接返回后端状态，支持 pending, running, completed, failed, cancelled
-    return backendStatus as TaskStatus;
-  }
 
   // 翻译阶段名称
   private translateStageName(stageName: string): string {
