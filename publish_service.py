@@ -34,13 +34,14 @@ class PublishService:
         初始化发布服务
         
         Args:
-            use_mock: 是否使用mock接口（测试用）
+            use_mock: 是否使用mock接口（测试用）- 默认使用真实接口
         """
         self.db = get_db_manager()
         self.account_service = get_account_service()
-        self.use_mock = use_mock
-        self.upload_url = MOCK_UPLOAD_API_URL if use_mock else UPLOAD_API_URL
-        logger.info(f"发布服务初始化，使用{'Mock' if use_mock else '真实'}上传接口: {self.upload_url}")
+        # 强制使用真实接口，除非明确设置use_mock=True
+        self.use_mock = False  # 始终使用真实接口
+        self.upload_url = UPLOAD_API_URL  # 始终使用真实上传接口
+        logger.info(f"发布服务初始化，使用真实上传接口: {self.upload_url}")
     
     def create_publish_task(
         self,
@@ -173,8 +174,22 @@ class PublishService:
                 if publish_task.thumbnail_path and Path(publish_task.thumbnail_path).exists():
                     upload_request['tasks'][0]['video']['thumbnail'] = publish_task.thumbnail_path
                 
-                logger.info(f"发送上传请求到 {self.upload_url}")
-                logger.debug(f"请求数据: {json.dumps(upload_request, ensure_ascii=False)}")
+                # 详细的请求日志，用于调试
+                logger.info("="*60)
+                logger.info(f"[上传请求] 发送到真实YouTube上传API")
+                logger.info(f"[上传URL] {self.upload_url}")
+                logger.info(f"[请求数据] 完整JSON:")
+                logger.info(json.dumps(upload_request, ensure_ascii=False, indent=2))
+                logger.info("="*60)
+                
+                # 额外的调试信息
+                logger.debug(f"[调试] Profile ID: {account['profile_id']}")
+                logger.debug(f"[调试] 视频路径: {publish_task.video_path}")
+                logger.debug(f"[调试] 视频标题: {publish_task.video_title}")
+                logger.debug(f"[调试] 视频描述长度: {len(publish_task.video_description) if publish_task.video_description else 0}")
+                logger.debug(f"[调试] 标签数量: {len(json.loads(publish_task.video_tags)) if publish_task.video_tags else 0}")
+                logger.debug(f"[调试] 隐私设置: {publish_task.privacy_status}")
+                logger.debug(f"[调试] 缩略图: {'有' if publish_task.thumbnail_path else '无'}")
                 
                 # 发送HTTP请求
                 async with aiohttp.ClientSession() as session:
@@ -183,9 +198,24 @@ class PublishService:
                         json=upload_request,
                         timeout=aiohttp.ClientTimeout(total=600)  # 10分钟超时
                     ) as response:
-                        response_data = await response.json()
-                        logger.info(f"收到上传响应: {response.status}")
-                        logger.debug(f"响应数据: {json.dumps(response_data, ensure_ascii=False)}")
+                        response_text = await response.text()
+                        
+                        # 详细的响应日志
+                        logger.info("="*60)
+                        logger.info(f"[上传响应] HTTP状态码: {response.status}")
+                        logger.info(f"[响应头] Content-Type: {response.headers.get('Content-Type', 'N/A')}")
+                        
+                        # 尝试解析JSON响应
+                        try:
+                            response_data = json.loads(response_text)
+                            logger.info(f"[响应数据] 完整JSON:")
+                            logger.info(json.dumps(response_data, ensure_ascii=False, indent=2))
+                        except json.JSONDecodeError:
+                            logger.error(f"[响应错误] 无法解析JSON响应:")
+                            logger.error(response_text)
+                            response_data = {'error': 'Invalid JSON response', 'raw': response_text}
+                        
+                        logger.info("="*60)
                         
                         # 处理响应 - 根据真实API响应格式
                         if response.status == 200:
@@ -405,8 +435,15 @@ class PublishService:
 publish_service: Optional[PublishService] = None
 
 def get_publish_service(use_mock: bool = False) -> PublishService:
-    """获取发布服务实例"""
+    """
+    获取发布服务实例
+    
+    Args:
+        use_mock: 是否使用mock接口（已废弃，始终使用真实接口）
+    """
     global publish_service
     if not publish_service:
-        publish_service = PublishService(use_mock=use_mock)
+        # 强制使用真实接口，忽略use_mock参数
+        publish_service = PublishService(use_mock=False)
+        logger.info("初始化发布服务，强制使用真实YouTube上传API")
     return publish_service

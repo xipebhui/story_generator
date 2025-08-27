@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Drawer,
   Descriptions,
@@ -15,7 +15,8 @@ import {
   Spin,
   message,
   Empty,
-  Badge
+  Badge,
+  Upload
 } from 'antd';
 import {
   CopyOutlined,
@@ -32,10 +33,12 @@ import {
   PictureOutlined,
   CloudUploadOutlined,
   GlobalOutlined,
-  TranslationOutlined
+  TranslationOutlined,
+  UploadOutlined
 } from '@ant-design/icons';
 import { Task, TaskResult } from '../../types/task';
 import { pipelineService } from '../../services/pipeline';
+import { backendAccountService } from '../../services/backend';
 import dayjs from 'dayjs';
 import duration from 'dayjs/plugin/duration';
 
@@ -341,6 +344,55 @@ const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
                       />
                     </div>
                   )}
+                </Space>
+              </Card>
+
+              {/* 字幕上传 */}
+              <Card title="字幕管理" size="small">
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <Alert
+                    message="字幕说明"
+                    description="请上传.txt格式的字幕文件，系统将自动同步到视频中"
+                    type="info"
+                    showIcon
+                  />
+                  <Upload
+                    accept=".txt"
+                    showUploadList={false}
+                    beforeUpload={async (file) => {
+                      // 检查文件类型
+                      if (!file.name.endsWith('.txt')) {
+                        message.error('请上传.txt格式的字幕文件');
+                        return false;
+                      }
+                      
+                      // 检查文件大小（限制5MB）
+                      if (file.size > 5 * 1024 * 1024) {
+                        message.error('字幕文件不能超过5MB');
+                        return false;
+                      }
+                      
+                      try {
+                        message.loading('正在上传字幕...');
+                        const response = await backendAccountService.uploadSubtitle(task.task_id, file);
+                        message.success(`字幕上传成功！文件大小: ${(response.file_size / 1024).toFixed(2)}KB`);
+                        
+                        // 可选：刷新任务结果
+                        loadTaskResult();
+                      } catch (error: any) {
+                        message.error(error.message || '字幕上传失败');
+                      }
+                      
+                      return false; // 阻止默认上传
+                    }}
+                  >
+                    <Button icon={<UploadOutlined />}>
+                      上传字幕文件
+                    </Button>
+                  </Upload>
+                  <Text type="secondary">
+                    支持格式：.txt | 最大大小：5MB
+                  </Text>
                 </Space>
               </Card>
 

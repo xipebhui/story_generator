@@ -310,6 +310,43 @@ class BackendAccountService {
     return response.json();
   }
 
+  // 上传字幕文件
+  async uploadSubtitle(taskId: string, file: File): Promise<{ message: string; path: string; video_id: string; file_size: number }> {
+    const formData = new FormData();
+    formData.append('task_id', taskId);
+    formData.append('file', file);
+    
+    // 获取认证信息
+    const apiKey = localStorage.getItem('api_key');
+    const headers: Record<string, string> = {};
+    
+    // 添加认证头（注意：使用FormData时不要设置Content-Type）
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+    
+    const response = await fetch('/api/pipeline/upload-subtitle', {
+      method: 'POST',
+      headers,
+      body: formData
+    });
+    
+    // 处理401未授权错误
+    if (response.status === 401) {
+      localStorage.removeItem('api_key');
+      localStorage.removeItem('username');
+      window.location.href = '/login';
+      throw new Error('认证失败，请重新登录');
+    }
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || '上传字幕失败');
+    }
+    
+    return response.json();
+  }
+
   // 创建发布任务（使用新的schedule接口，支持定时发布）
   async createPublish(params: CreatePublishRequest): Promise<PublishResponse> {
     return apiRequest<PublishResponse>('/publish/schedule', {

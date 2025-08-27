@@ -60,7 +60,8 @@ from auth_middleware import (
 # 初始化数据库
 db_manager = init_database()
 account_service = get_account_service()
-publish_service = get_publish_service(use_mock=os.environ.get('USE_MOCK_UPLOAD', 'true').lower() == 'true')
+# 始终使用真实的YouTube上传API
+publish_service = get_publish_service(use_mock=False)  # 强制使用真实接口
 
 # 初始化账号数据
 account_service.initialize_accounts()
@@ -949,20 +950,29 @@ async def upload_subtitle(
         logger.info(f"✅ 字幕文件上传成功: {subtitle_path}")
         
         # 更新任务状态，标记已有手动字幕
+        # 先获取现有的progress
+        existing_task = db_manager.get_task(task_id)
+        existing_progress = {}
+        if existing_task and existing_task.progress:
+            try:
+                existing_progress = json.loads(existing_task.progress)
+            except:
+                existing_progress = {}
+        
+        # 更新progress，注意所有值都应该是字符串
+        existing_progress['manual_subtitle'] = 'uploaded'  # 使用字符串而不是布尔值
+        existing_progress['subtitle_uploaded_at'] = datetime.now().isoformat()
+        
         update_data = {
-            'progress': json.dumps({
-                'manual_subtitle': True,
-                'subtitle_uploaded_at': datetime.now().isoformat()
-            })
+            'progress': json.dumps(existing_progress)
         }
         db_manager.update_task(task_id, update_data)
         
         return {
-            "message": "字幕文件上传成功",
-            "task_id": task_id,
+            "message": "字幕文件已上传",
+            "path": str(subtitle_path),  # 相对路径
             "video_id": video_id,
-            "subtitle_path": str(subtitle_path.absolute()),
-            "subtitle_length": len(text_content)
+            "file_size": len(text_content)  # 文件大小（字符数）
         }
         
     except HTTPException:
