@@ -1211,16 +1211,44 @@ async def get_publish_history(
     limit: int = Query(100, ge=1, le=500),
     current_user: Optional[User] = Depends(get_current_user)
 ):
-    """查询发布历史"""
+    """
+    查询发布历史
+    
+    返回数据包含：
+    - account_name: 账号名称
+    - youtube_channel_name: YouTube频道名称
+    - upload_completed_at: 发布完成时间
+    - status: 发布状态
+    - youtube_video_url: YouTube视频链接
+    """
     history = publish_service.get_publish_history(
         task_id=task_id,
         account_id=account_id,
         status=status,
         limit=limit
     )
+    
+    # 简化返回的数据结构，只返回前端需要的关键字段
+    simplified_history = []
+    for task in history:
+        simplified_history.append({
+            'publish_id': task.get('publish_id'),
+            'task_id': task.get('task_id'),
+            'account_id': task.get('account_id'),
+            'account_name': task.get('account_name'),  # 新增：账号名称
+            'youtube_channel_name': task.get('youtube_channel_name'),  # 新增：YouTube频道名称
+            'video_title': task.get('video_title'),
+            'status': task.get('status'),
+            'youtube_video_url': task.get('youtube_video_url'),
+            'error_message': task.get('error_message'),
+            'created_at': task.get('created_at'),
+            'upload_completed_at': task.get('upload_completed_at'),  # 发布完成时间
+            'privacy_status': task.get('privacy_status')
+        })
+    
     return {
-        "total": len(history),
-        "publish_tasks": history
+        "total": len(simplified_history),
+        "publish_tasks": simplified_history
     }
 
 @app.post("/api/publish/retry/{publish_id}")
@@ -1309,6 +1337,104 @@ async def update_account_status(account_id: str, is_active: bool):
     if not success:
         raise HTTPException(status_code=404, detail="账号不存在")
     return {"message": f"账号状态已更新为 {'激活' if is_active else '禁用'}"}
+
+class CreateAccountRequest(BaseModel):
+    """创建账号请求模型"""
+    account_id: str
+    account_name: str
+    profile_id: str
+    window_number: Optional[str] = None
+    description: Optional[str] = None
+    is_active: bool = True
+    channel_url: Optional[str] = None
+
+@app.post("/api/accounts")
+async def create_account(
+    request: CreateAccountRequest,
+    current_user: Optional[User] = Depends(get_current_user)
+):
+    """
+    创建新账号
+    
+    必需字段:
+    - account_id: 账号唯一标识
+    - account_name: 账号名称
+    - profile_id: 比特浏览器Profile ID
+    
+    可选字段:
+    - window_number: 窗口序号
+    - description: 描述信息
+    - is_active: 是否激活（默认True）
+    - channel_url: YouTube频道URL
+    """
+    # 构建账号数据
+    account_data = {
+        'account_id': request.account_id,
+        'account_name': request.account_name,
+        'profile_id': request.profile_id,
+        'window_number': request.window_number,
+        'description': request.description,
+        'is_active': request.is_active,
+        'channel_url': request.channel_url
+    }
+    
+    # 过滤掉None值
+    account_data = {k: v for k, v in account_data.items() if v is not None}
+    
+    # 创建账号
+    account = account_service.create_account(account_data)
+    if not account:
+        raise HTTPException(
+            status_code=400,
+            detail="创建账号失败，可能账号ID已存在或缺少必需字段"
+        )
+    
+    logger.info(f"用户 {current_user.username if current_user else 'anonymous'} 创建了账号 {request.account_id}")
+    
+    return {
+        "message": f"账号 {request.account_name} 创建成功",
+        "account": account
+    }
+
+@app.delete("/api/accounts/{account_id}")
+async def delete_account(
+    account_id: str,
+    force: bool = Query(False, description="强制删除，即使有发布任务"),
+    current_user: Optional[User] = Depends(get_current_user)
+):
+    """
+    删除账号
+    
+    注意：
+    - 如果账号有相关的发布任务，默认只会标记为不活跃而非真正删除
+    - 使用 force=true 参数可以强制删除（慎用）
+    """
+    # 检查账号是否存在
+    account = account_service.get_account_by_id(account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    
+    # 删除账号
+    success = account_service.delete_account(account_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="删除账号失败")
+    
+    logger.info(f"用户 {current_user.username if current_user else 'anonymous'} 删除了账号 {account_id}")
+    
+    # 检查是否是软删除（标记为不活跃）
+    account_after = account_service.get_account_by_id(account_id)
+    if account_after and not account_after.get('is_active'):
+        return {
+            "message": f"账号 {account['account_name']} 有相关发布任务，已标记为不活跃",
+            "action": "deactivated",
+            "account_id": account_id
+        }
+    else:
+        return {
+            "message": f"账号 {account['account_name']} 已删除",
+            "action": "deleted",
+            "account_id": account_id
+        }
 
 # ============ 其他端点 ============
 

@@ -261,6 +261,70 @@ class AccountService:
         result = self.db.update_account(account_id, {'is_active': is_active})
         return result is not None
     
+    def create_account(self, account_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        创建新账号
+        
+        Args:
+            account_data: 账号数据，包含:
+                - account_id: 账号ID（必需）
+                - account_name: 账号名称（必需）
+                - profile_id: 比特浏览器Profile ID（必需）
+                - window_number: 窗口序号（可选）
+                - description: 描述信息（可选）
+                - is_active: 是否激活（默认True）
+        
+        Returns:
+            创建成功返回账号信息，失败返回None
+        """
+        try:
+            # 检查必需字段
+            required_fields = ['account_id', 'account_name', 'profile_id']
+            for field in required_fields:
+                if field not in account_data:
+                    logger.error(f"创建账号缺少必需字段: {field}")
+                    return None
+            
+            # 检查账号是否已存在
+            existing = self.db.get_account(account_data['account_id'])
+            if existing:
+                logger.warning(f"账号已存在: {account_data['account_id']}")
+                return None
+            
+            # 设置默认值
+            account_data.setdefault('is_active', True)
+            account_data.setdefault('description', f"账号 {account_data['account_name']}")
+            
+            # 创建账号
+            account = self.db.create_account(account_data)
+            logger.info(f"成功创建账号: {account_data['account_id']}")
+            return account.to_dict()
+            
+        except Exception as e:
+            logger.error(f"创建账号失败: {e}")
+            return None
+    
+    def delete_account(self, account_id: str) -> bool:
+        """
+        删除账号
+        
+        Args:
+            account_id: 账号ID
+        
+        Returns:
+            删除成功返回True，失败返回False
+        """
+        try:
+            result = self.db.delete_account(account_id)
+            if result:
+                logger.info(f"成功删除账号: {account_id}")
+            else:
+                logger.warning(f"删除账号失败，账号不存在: {account_id}")
+            return result
+        except Exception as e:
+            logger.error(f"删除账号异常: {e}")
+            return False
+    
     def get_account_statistics(self, account_id: str) -> Dict[str, Any]:
         """
         获取账号统计信息

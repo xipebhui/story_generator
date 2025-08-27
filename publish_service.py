@@ -383,7 +383,7 @@ class PublishService:
         limit: int = 100
     ) -> List[Dict[str, Any]]:
         """
-        获取发布历史
+        获取发布历史，包含账号名称信息
         
         Args:
             task_id: Pipeline任务ID筛选
@@ -392,7 +392,7 @@ class PublishService:
             limit: 返回数量限制
         
         Returns:
-            发布任务列表
+            发布任务列表，包含账号名称
         """
         with self.db.get_session() as session:
             query = session.query(PublishTask)
@@ -408,7 +408,31 @@ class PublishService:
             query = query.limit(limit)
             
             tasks = query.all()
-            return [task.to_dict() for task in tasks]
+            
+            # 增强返回数据，添加账号名称信息
+            result = []
+            for task in tasks:
+                task_dict = task.to_dict()
+                
+                # 获取账号信息
+                account_info = self.account_service.get_account_by_id(task.account_id)
+                if account_info:
+                    # 添加账号名称和YouTube账号名称
+                    task_dict['account_name'] = account_info.get('account_name', task.account_id)
+                    task_dict['youtube_channel_name'] = account_info.get('channel_name', account_info.get('account_name', ''))
+                else:
+                    # 如果找不到账号信息，使用account_id作为默认值
+                    task_dict['account_name'] = task.account_id
+                    task_dict['youtube_channel_name'] = task.account_id
+                
+                # 确保发布完成时间字段存在
+                if not task_dict.get('upload_completed_at') and task.status == 'success':
+                    # 如果成功但没有完成时间，使用创建时间
+                    task_dict['upload_completed_at'] = task_dict.get('created_at')
+                
+                result.append(task_dict)
+            
+            return result
     
     def retry_failed_publish(self, publish_id: str) -> Dict[str, Any]:
         """

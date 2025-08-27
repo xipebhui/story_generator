@@ -273,6 +273,34 @@ class BackendAccountService {
     return response.accounts;
   }
 
+  // 创建新账号
+  async createAccount(account: {
+    account_id: string;
+    account_name: string;
+    profile_id: string;
+    window_number?: string;
+    description?: string;
+    is_active?: boolean;
+    channel_url?: string;
+  }): Promise<YouTubeAccount> {
+    return apiRequest<YouTubeAccount>('/accounts', {
+      method: 'POST',
+      body: JSON.stringify(account)
+    });
+  }
+
+  // 删除账号
+  async deleteAccount(accountId: string, force: boolean = false): Promise<{
+    message: string;
+    account_id: string;
+    operation: 'deleted' | 'deactivated';
+  }> {
+    const url = force ? `/accounts/${accountId}?force=true` : `/accounts/${accountId}`;
+    return apiRequest(url, {
+      method: 'DELETE'
+    });
+  }
+
   // 上传缩略图
   async uploadThumbnail(taskId: string, file: File): Promise<{ message: string; thumbnail_path: string }> {
     const formData = new FormData();
@@ -368,32 +396,34 @@ class BackendAccountService {
     return apiRequest(`/publish/status/${taskId}`);
   }
 
-  // 获取所有发布任务
+  // 获取所有发布任务（使用后端的 /publish/history 接口）
   async getPublishTasks(taskId?: string): Promise<any[]> {
-    // 如果提供了taskId，获取单个任务的发布状态
-    if (taskId) {
-      try {
-        const status = await this.getPublishStatus(taskId);
-        // 如果状态是数组，直接返回；如果是单个对象，包装成数组
-        if (Array.isArray(status)) {
-          return status;
-        } else if (status && typeof status === 'object') {
-          return [status];
-        }
-        return [];
-      } catch (error) {
-        console.error('获取发布状态失败:', error);
-        return [];
-      }
-    }
-    
-    // 获取所有发布任务（后端可能需要添加这个接口）
     try {
-      const response = await apiRequest('/publish/tasks');
-      return Array.isArray(response) ? response : response.tasks || [];
+      // 构建查询参数
+      const params = new URLSearchParams();
+      if (taskId) {
+        params.append('task_id', taskId);
+      }
+      
+      const url = `/publish/history${params.toString() ? `?${params}` : ''}`;
+      const response = await apiRequest(url);
+      
+      // 返回发布任务列表 - 后端返回的格式是 { total: number, publish_tasks: [] }
+      if (Array.isArray(response)) {
+        return response;
+      } else if (response && response.publish_tasks) {
+        return response.publish_tasks;  // 实际的数据在 publish_tasks 字段中
+      } else if (response && response.history) {
+        return response.history;
+      } else if (response && response.items) {
+        return response.items;
+      } else if (response && typeof response === 'object') {
+        // 如果返回的是单个对象，包装成数组
+        return [response];
+      }
+      return [];
     } catch (error) {
-      console.error('获取发布任务列表失败:', error);
-      // 如果没有这个接口，尝试其他方法
+      console.error('获取发布历史失败:', error);
       return [];
     }
   }

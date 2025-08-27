@@ -397,6 +397,36 @@ class DatabaseManager:
             session.refresh(account)
             return account
     
+    def delete_account(self, account_id: str) -> bool:
+        """
+        删除账号
+        
+        Args:
+            account_id: 账号ID
+        
+        Returns:
+            删除成功返回True，账号不存在返回False
+        """
+        with self.get_session() as session:
+            account = session.query(Account).filter_by(account_id=account_id).first()
+            if not account:
+                return False
+            
+            # 检查是否有相关的发布任务
+            publish_tasks = session.query(PublishTask).filter_by(account_id=account_id).count()
+            if publish_tasks > 0:
+                # 如果有发布任务，只标记为不活跃，不真正删除
+                account.is_active = False
+                session.commit()
+                logger.warning(f"账号 {account_id} 有 {publish_tasks} 个发布任务，已标记为不活跃而非删除")
+                return True
+            
+            # 真正删除账号
+            session.delete(account)
+            session.commit()
+            logger.info(f"账号 {account_id} 已删除")
+            return True
+    
     # ============ 发布任务管理 ============
     
     def create_publish_task(self, publish_data: Dict[str, Any]) -> PublishTask:

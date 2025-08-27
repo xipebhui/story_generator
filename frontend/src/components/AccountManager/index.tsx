@@ -54,12 +54,14 @@ const AccountManager: React.FC<AccountManagerProps> = ({
       const formattedAccounts = backendAccounts.map(acc => ({
         id: acc.account_id,
         name: acc.account_name,
-        youtube_account: acc.channel_name,
+        youtube_account: acc.channel_url?.replace('https://youtube.com/', '').replace('https://www.youtube.com/', ''),
         youtube_channel_id: acc.channel_id,
-        bitbrowser_name: acc.account_id,
-        status: acc.status,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        bitbrowser_name: acc.profile_id || acc.account_id,
+        status: acc.is_active ? 'active' : 'inactive',
+        window_number: acc.window_number,
+        description: acc.description,
+        created_at: acc.created_at || new Date().toISOString(),
+        updated_at: acc.updated_at || new Date().toISOString()
       }));
       
       setAccounts(formattedAccounts);
@@ -87,35 +89,62 @@ const AccountManager: React.FC<AccountManagerProps> = ({
       const values = await form.validateFields();
       
       if (editingAccount) {
-        // 编辑账号
+        // 编辑账号 - 暂时使用本地模拟
         await accountService.updateAccount(editingAccount.id, values);
         message.success('账号更新成功');
       } else {
-        // 创建账号
-        await accountService.createAccount({
-          ...values,
-          status: 'active'
-        });
-        message.success('账号创建成功');
+        // 创建账号 - 使用后端API
+        try {
+          await backendAccountService.createAccount({
+            account_id: values.account_id,
+            account_name: values.name,
+            profile_id: values.bitbrowser_name,
+            channel_url: values.youtube_account ? `https://youtube.com/${values.youtube_account}` : undefined,
+            window_number: values.window_number,
+            description: values.description,
+            is_active: true
+          });
+          message.success('账号创建成功');
+        } catch (backendError: any) {
+          // 如果后端创建失败，尝试本地创建
+          console.warn('后端创建失败，使用本地模拟:', backendError);
+          await accountService.createAccount({
+            ...values,
+            status: 'active'
+          });
+          message.success('账号创建成功（模拟）');
+        }
       }
       
       setModalVisible(false);
       form.resetFields();
       setEditingAccount(null);
       loadAccounts();
-    } catch (error) {
-      message.error('操作失败');
+    } catch (error: any) {
+      message.error(error.message || '操作失败');
     }
   };
 
   // 处理删除账号
   const handleDelete = async (id: string) => {
     try {
-      await accountService.deleteAccount(id);
-      message.success('账号删除成功');
+      // 使用后端API删除账号
+      try {
+        const result = await backendAccountService.deleteAccount(id);
+        if (result.operation === 'deactivated') {
+          message.warning('账号有关联的发布任务，已标记为不活跃');
+        } else {
+          message.success('账号删除成功');
+        }
+      } catch (backendError: any) {
+        // 如果后端删除失败，尝试本地删除
+        console.warn('后端删除失败，使用本地模拟:', backendError);
+        await accountService.deleteAccount(id);
+        message.success('账号删除成功（模拟）');
+      }
       loadAccounts();
-    } catch (error) {
-      message.error('删除失败');
+    } catch (error: any) {
+      message.error(error.message || '删除失败');
     }
   };
 
@@ -274,32 +303,66 @@ const AccountManager: React.FC<AccountManagerProps> = ({
           layout="vertical"
         >
           <Form.Item
-            name="name"
-            label="账号名称"
-            rules={[{ required: true, message: '请输入账号名称' }]}
-          >
-            <Input placeholder="例如：主账号" />
-          </Form.Item>
-
-          <Form.Item
-            name="youtube_account"
-            label="YouTube账号"
-            rules={[{ required: true, message: '请输入YouTube账号' }]}
+            name="account_id"
+            label="账号ID"
+            rules={[
+              { required: true, message: '请输入账号ID' },
+              { pattern: /^[a-zA-Z0-9_-]+$/, message: '只能包含字母、数字、下划线和横线' }
+            ]}
+            tooltip="账号的唯一标识，创建后不可修改"
           >
             <Input 
-              prefix={<YoutubeOutlined />}
-              placeholder="例如：MyYouTubeChannel" 
+              placeholder="例如：yt_test_001" 
+              disabled={!!editingAccount}
             />
           </Form.Item>
 
           <Form.Item
+            name="name"
+            label="账号名称"
+            rules={[{ required: true, message: '请输入账号名称' }]}
+          >
+            <Input placeholder="例如：测试账号" />
+          </Form.Item>
+
+          <Form.Item
             name="bitbrowser_name"
-            label="比特浏览器名称"
-            rules={[{ required: true, message: '请输入比特浏览器名称' }]}
+            label="比特浏览器Profile ID"
+            rules={[{ required: true, message: '请输入比特浏览器Profile ID' }]}
+            tooltip="比特浏览器中的Profile标识"
           >
             <Input 
               prefix={<ChromeOutlined />}
-              placeholder="例如：BitBrowser_Main" 
+              placeholder="例如：abc123" 
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="youtube_account"
+            label="YouTube频道（可选）"
+          >
+            <Input 
+              prefix={<YoutubeOutlined />}
+              placeholder="例如：@MyYouTubeChannel" 
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="window_number"
+            label="窗口序号（可选）"
+          >
+            <Input 
+              placeholder="例如：1" 
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="description"
+            label="描述（可选）"
+          >
+            <Input.TextArea 
+              placeholder="账号的描述信息" 
+              rows={2}
             />
           </Form.Item>
         </Form>

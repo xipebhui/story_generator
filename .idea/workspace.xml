@@ -5,16 +5,13 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="b06674bc-41ad-4cbf-b795-3fc27c1ebd5f" name="更改" comment="增加超时设置">
-      <change beforePath="$PROJECT_DIR$/.env.example" beforeDir="false" afterPath="$PROJECT_DIR$/.env.example" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/shelf/_2025_8_20_22_54____.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/shelf/在进行更新之前于_2025_8_20_22_54_取消提交了更改_[更改]/shelved.patch" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/api_with_db.py" beforeDir="false" afterPath="$PROJECT_DIR$/api_with_db.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/database.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/Dashboard/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/Dashboard/index.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/router.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/router.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/PublishStatus/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/PublishStatus/index.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/services/backend.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/services/backend.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/services/pipelineAdapter.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/services/pipelineAdapter.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pipeline_steps_v3.py" beforeDir="false" afterPath="$PROJECT_DIR$/pipeline_steps_v3.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/publish_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/publish_service.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

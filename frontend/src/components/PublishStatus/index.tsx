@@ -9,7 +9,8 @@ import {
   Tooltip,
   message,
   Empty,
-  Avatar
+  Avatar,
+  Typography
 } from 'antd';
 import {
   CloudUploadOutlined,
@@ -21,13 +22,16 @@ import {
   LinkOutlined,
   UserOutlined,
   CalendarOutlined,
-  ReloadOutlined
+  ReloadOutlined,
+  ExclamationCircleOutlined
 } from '@ant-design/icons';
 import { PublishTask } from '../../types/account';
 import { accountService } from '../../services/account';
 import { backendAccountService } from '../../services/backend';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
+
+const { Text } = Typography;
 
 interface PublishStatusProps {
   taskId?: string;
@@ -45,36 +49,43 @@ const PublishStatus: React.FC<PublishStatusProps> = ({
   const loadPublishTasks = async () => {
     setLoading(true);
     try {
-      // 优先尝试从后端获取真实的发布任务
-      try {
-        const backendTasks = await backendAccountService.getPublishTasks(taskId);
+      // 从后端获取真实的发布任务
+      const backendTasks = await backendAccountService.getPublishTasks(taskId);
+      console.log('后端发布任务数据:', backendTasks);
+      
+      // 直接使用后端返回的数据格式
+      const formattedTasks = backendTasks.map((task: any) => ({
+        // 主要标识
+        id: task.publish_id,
+        publish_id: task.publish_id,
+        task_id: task.task_id,
         
-        // 转换后端任务格式为前端格式
-        const formattedTasks = backendTasks.map((task: any) => ({
-          id: task.publish_id || task.id || `pub_${Date.now()}_${Math.random()}`,
-          task_id: task.task_id,
-          account_id: task.account_id || task.account_ids?.[0],
-          account_name: task.account_name || task.account_id || '未知账号',
-          title: task.video_title || task.title || '未命名视频',
-          description: task.video_description || task.description,
-          video_path: task.video_path,
-          thumbnail_path: task.thumbnail_path,
-          publish_time: task.publish_time || task.created_at,
-          publish_interval: task.publish_interval,
-          status: task.status || 'pending',
-          created_at: task.created_at,
-          published_at: task.published_at,
-          youtube_url: task.youtube_url || task.results?.[0]?.youtube_url,
-          error_message: task.error_message || task.error || task.results?.[0]?.error
-        }));
+        // 账号信息
+        account_id: task.account_id,
+        account_name: task.account_name,
+        youtube_channel_name: task.youtube_channel_name,
         
-        setPublishTasks(formattedTasks);
-      } catch (backendError) {
-        console.warn('无法从后端获取发布任务，尝试使用本地数据:', backendError);
-        // 如果后端不可用，回退到本地模拟数据
-        const tasks = await accountService.getPublishTasks(taskId);
-        setPublishTasks(tasks);
-      }
+        // 视频信息
+        title: task.video_title,
+        video_title: task.video_title,
+        privacy_status: task.privacy_status,
+        
+        // 状态和结果
+        status: task.status,
+        youtube_url: task.youtube_video_url,
+        youtube_video_url: task.youtube_video_url,
+        error_message: task.error_message,
+        
+        // 时间信息
+        created_at: task.created_at,
+        upload_completed_at: task.upload_completed_at,
+        publish_time: task.created_at, // 用创建时间作为发布时间显示
+        
+        // 兼容旧字段
+        published_at: task.upload_completed_at
+      }));
+      
+      setPublishTasks(formattedTasks);
     } catch (error) {
       console.error('加载发布任务失败:', error);
       message.error('加载发布任务失败');
@@ -97,12 +108,16 @@ const PublishStatus: React.FC<PublishStatusProps> = ({
   const getStatusTag = (status: string) => {
     const statusConfig = {
       pending: { color: 'default', icon: <ClockCircleOutlined />, text: '待发布' },
+      uploading: { color: 'processing', icon: <SyncOutlined spin />, text: '上传中' },
       publishing: { color: 'processing', icon: <SyncOutlined spin />, text: '发布中' },
       published: { color: 'success', icon: <CheckCircleOutlined />, text: '已发布' },
-      failed: { color: 'error', icon: <CloseCircleOutlined />, text: '发布失败' }
+      success: { color: 'success', icon: <CheckCircleOutlined />, text: '发布成功' },
+      failed: { color: 'error', icon: <CloseCircleOutlined />, text: '发布失败' },
+      completed: { color: 'success', icon: <CheckCircleOutlined />, text: '已完成' }
     };
 
-    const config = statusConfig[status as keyof typeof statusConfig];
+    const config = statusConfig[status as keyof typeof statusConfig] || 
+                   { color: 'default', icon: <ClockCircleOutlined />, text: status || '未知' };
     return (
       <Tag color={config.color} icon={config.icon}>
         {config.text}
@@ -122,108 +137,145 @@ const PublishStatus: React.FC<PublishStatusProps> = ({
   };
 
   // 表格列配置
-  const columns: ColumnsType<PublishTask> = [
+  const columns: ColumnsType<any> = [
+    {
+      title: '发布ID',
+      dataIndex: 'publish_id',
+      key: 'publish_id',
+      width: 150,
+      render: (text) => {
+        if (!text) return '-';
+        const shortId = text.split('_').slice(-1)[0]; // 只显示最后一部分
+        return (
+          <Tooltip title={text}>
+            <span style={{ 
+              fontFamily: 'monospace',
+              fontSize: 12,
+              color: '#5e72e4'
+            }}>
+              ...{shortId}
+            </span>
+          </Tooltip>
+        );
+      }
+    },
     {
       title: '任务ID',
       dataIndex: 'task_id',
       key: 'task_id',
-      width: 200,
-      render: (text) => (
-        <Tooltip title={text}>
-          <span style={{ 
-            fontFamily: 'monospace',
-            fontSize: 12,
-            color: '#5e72e4'
-          }}>
-            {text.substring(0, 20)}...
-          </span>
-        </Tooltip>
-      )
+      width: 180,
+      render: (text) => {
+        if (!text) return '-';
+        const displayText = text.length > 25 ? text.substring(0, 25) + '...' : text;
+        return (
+          <Tooltip title={text}>
+            <span style={{ 
+              fontFamily: 'monospace',
+              fontSize: 11
+            }}>
+              {displayText}
+            </span>
+          </Tooltip>
+        );
+      }
     },
     {
-      title: '发布账号',
-      dataIndex: 'account_name',
-      key: 'account_name',
-      width: 150,
-      render: (text) => (
-        <Space>
-          <Avatar size="small" icon={<UserOutlined />} />
-          {text}
+      title: 'YouTube账号',
+      key: 'youtube_account',
+      width: 180,
+      render: (_, record) => (
+        <Space direction="vertical" size={0}>
+          <Space size={4}>
+            <Avatar size="small" icon={<UserOutlined />} style={{ backgroundColor: '#1890ff' }} />
+            <Text strong style={{ fontSize: 13 }}>
+              {record.account_name || '未知账号'}
+            </Text>
+          </Space>
+          {record.youtube_channel_name && (
+            <Text type="secondary" style={{ fontSize: 11, marginLeft: 28 }}>
+              @{record.youtube_channel_name}
+            </Text>
+          )}
         </Space>
       )
     },
     {
       title: '视频标题',
-      dataIndex: 'title',
-      key: 'title',
+      dataIndex: 'video_title',
+      key: 'video_title',
       ellipsis: true,
-      render: (text) => (
-        <Tooltip title={text}>
-          <span>{text}</span>
-        </Tooltip>
-      )
+      render: (text) => {
+        if (!text) return '-';
+        return (
+          <Tooltip title={text}>
+            <span>{text}</span>
+          </Tooltip>
+        );
+      }
     },
     {
-      title: '发布时间',
-      key: 'publish_time',
-      width: 180,
-      render: (_, record) => {
-        if (record.publish_time) {
-          return (
-            <Space>
-              <CalendarOutlined />
-              {dayjs(record.publish_time).format('YYYY-MM-DD HH:mm')}
-            </Space>
-          );
-        }
-        if (record.publish_interval) {
-          return (
-            <Space>
-              <ClockCircleOutlined />
-              间隔 {record.publish_interval} 分钟
-            </Space>
-          );
-        }
-        return '立即发布';
+      title: '隐私设置',
+      dataIndex: 'privacy_status',
+      key: 'privacy_status',
+      width: 100,
+      render: (privacy) => {
+        const privacyConfig = {
+          public: { color: 'green', text: '公开' },
+          private: { color: 'red', text: '私密' },
+          unlisted: { color: 'orange', text: '不公开' }
+        };
+        const config = privacyConfig[privacy as keyof typeof privacyConfig] || 
+                       { color: 'default', text: privacy || '-' };
+        return <Tag color={config.color}>{config.text}</Tag>;
       }
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      width: 120,
-      render: (status) => getStatusTag(status)
+      width: 100,
+      render: (status) => status ? getStatusTag(status) : '-'
     },
     {
-      title: '进度',
-      key: 'progress',
+      title: '创建时间',
+      dataIndex: 'created_at',
+      key: 'created_at',
       width: 150,
-      render: (_, record) => {
-        if (record.status === 'publishing') {
-          return <Progress percent={50} size="small" status="active" />;
-        }
-        if (record.status === 'published') {
-          return <Progress percent={100} size="small" status="success" />;
-        }
-        if (record.status === 'failed') {
-          return <Progress percent={0} size="small" status="exception" />;
-        }
-        return <Progress percent={0} size="small" />;
+      render: (time) => {
+        if (!time) return '-';
+        return dayjs(time).format('MM-DD HH:mm');
+      }
+    },
+    {
+      title: '完成时间',
+      dataIndex: 'upload_completed_at',
+      key: 'upload_completed_at',
+      width: 150,
+      render: (time) => {
+        if (!time) return '-';
+        return (
+          <Tooltip title={dayjs(time).format('YYYY-MM-DD HH:mm:ss')}>
+            <span>{dayjs(time).format('MM-DD HH:mm')}</span>
+          </Tooltip>
+        );
       }
     },
     {
       title: '操作',
       key: 'action',
-      width: 150,
+      width: 180,
+      fixed: 'right',
       render: (_, record) => (
-        <Space>
-          {record.status === 'published' && record.youtube_url && (
-            <Tooltip title="查看视频">
+        <Space size={4}>
+          {(record.status === 'success' || record.status === 'published') && record.youtube_video_url && (
+            <Tooltip title={`访问视频: ${record.youtube_video_url}`}>
               <Button
-                type="link"
+                type="primary"
+                size="small"
                 icon={<YoutubeOutlined />}
-                href={record.youtube_url}
+                href={record.youtube_video_url}
                 target="_blank"
+                style={{ fontSize: 12 }}
               >
                 查看
               </Button>
@@ -233,17 +285,28 @@ const PublishStatus: React.FC<PublishStatusProps> = ({
             <Button
               size="small"
               danger
-              onClick={() => handleCancel(record.id)}
+              onClick={() => handleCancel(record.publish_id)}
+              style={{ fontSize: 12 }}
             >
               取消
             </Button>
           )}
-          {record.status === 'failed' && (
-            <Tooltip title={record.error_message}>
-              <Button size="small" danger>
-                查看错误
+          {record.status === 'failed' && record.error_message && (
+            <Tooltip title={`错误信息: ${record.error_message}`}>
+              <Button 
+                size="small" 
+                danger
+                icon={<ExclamationCircleOutlined />}
+                style={{ fontSize: 12 }}
+              >
+                错误
               </Button>
             </Tooltip>
+          )}
+          {(record.status === 'uploading' || record.status === 'publishing') && (
+            <Tag color="processing" icon={<SyncOutlined spin />}>
+              处理中
+            </Tag>
           )}
         </Space>
       )
@@ -279,11 +342,13 @@ const PublishStatus: React.FC<PublishStatusProps> = ({
         <Table
           columns={columns}
           dataSource={publishTasks}
-          rowKey="id"
+          rowKey="publish_id"
           loading={loading}
+          scroll={{ x: 1500 }}
           pagination={{
             pageSize: 10,
-            showSizeChanger: false
+            showSizeChanger: true,
+            showTotal: (total) => `共 ${total} 条发布记录`
           }}
         />
       )}
