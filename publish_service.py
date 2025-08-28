@@ -99,14 +99,18 @@ class PublishService:
             
             # 构建发布数据
             publish_id = f"pub_{task_id}_{account_id}_{uuid.uuid4().hex[:8]}"
+            
+            # 不再处理video_tags和video_description，避免特殊字符问题
+            # 这些信息可以从pipeline_task的youtube_metadata中获取
+            
             publish_data = {
                 'publish_id': publish_id,
                 'task_id': task_id,
                 'account_id': account_id,
                 'video_path': video_path,
                 'video_title': video_title or youtube_metadata.get('title', f"Video {task_id}"),
-                'video_description': video_description or youtube_metadata.get('description', ''),
-                'video_tags': video_tags or youtube_metadata.get('tags', []),
+                'video_description': '',  # 留空，避免特殊字符问题
+                'video_tags': json.dumps([], ensure_ascii=False),  # 空标签列表
                 'thumbnail_path': thumbnail_path or pipeline_task.thumbnail_path,
                 'scheduled_time': scheduled_time,
                 'is_scheduled': scheduled_time is not None,
@@ -142,6 +146,13 @@ class PublishService:
                 if not publish_task:
                     return {'success': False, 'error': '发布任务不存在'}
                 
+                # 获取Pipeline任务以获取YouTube元数据
+                from database import PipelineTask
+                pipeline_task = session.query(PipelineTask).filter_by(task_id=publish_task.task_id).first()
+                youtube_metadata = {}
+                if pipeline_task and pipeline_task.youtube_metadata:
+                    youtube_metadata = json.loads(pipeline_task.youtube_metadata)
+                
                 # 获取账号信息
                 account = self.account_service.get_account_by_id(publish_task.account_id)
                 if not account:
@@ -153,6 +164,29 @@ class PublishService:
                     'upload_started_at': datetime.now()
                 })
                 
+                # 处理标签 - 从youtube_metadata中获取
+                tags_data = youtube_metadata.get('tags', [])
+                if isinstance(tags_data, dict):
+                    # 如果是字典格式，合并所有标签
+                    all_tags = []
+                    for key in ['chinese', 'english', 'mixed']:
+                        if key in tags_data:
+                            all_tags.extend(tags_data[key])
+                    tags_for_upload = all_tags[:20]  # YouTube限制最多20个标签
+                elif isinstance(tags_data, list):
+                    tags_for_upload = tags_data[:20]
+                else:
+                    tags_for_upload = []
+                
+                # 处理描述 - 从youtube_metadata中获取，但要清理特殊字符
+                description = youtube_metadata.get('description', '')
+                if description:
+                    # 清理可能导致问题的字符
+                    description = description.replace('\x00', '').replace('\r', '\n')
+                    # YouTube描述限制5000字符
+                    if len(description) > 5000:
+                        description = description[:4997] + '...'
+                
                 # 构建上传请求 - 符合真实YouTube上传API格式
                 upload_request = {
                     'tasks': [
@@ -162,8 +196,8 @@ class PublishService:
                                 'uid': publish_id,  # 任务唯一标识
                                 'path': publish_task.video_path,  # 视频文件路径
                                 'title': publish_task.video_title,  # 视频标题
-                                'description': publish_task.video_description,  # 视频描述
-                                'tags': json.loads(publish_task.video_tags) if publish_task.video_tags else [],  # 标签数组
+                                'description': description,  # 从youtube_metadata获取的描述
+                                'tags': tags_for_upload,  # 从youtube_metadata获取的标签
                                 'visibility': publish_task.privacy_status  # 可见性 (public/unlisted/private)
                             }
                         }
@@ -186,8 +220,8 @@ class PublishService:
                 logger.debug(f"[调试] Profile ID: {account['profile_id']}")
                 logger.debug(f"[调试] 视频路径: {publish_task.video_path}")
                 logger.debug(f"[调试] 视频标题: {publish_task.video_title}")
-                logger.debug(f"[调试] 视频描述长度: {len(publish_task.video_description) if publish_task.video_description else 0}")
-                logger.debug(f"[调试] 标签数量: {len(json.loads(publish_task.video_tags)) if publish_task.video_tags else 0}")
+                logger.debug(f"[调试] 视频描述长度: {len(description)}")
+                logger.debug(f"[调试] 标签数量: {len(tags_for_upload)}")
                 logger.debug(f"[调试] 隐私设置: {publish_task.privacy_status}")
                 logger.debug(f"[调试] 缩略图: {'有' if publish_task.thumbnail_path else '无'}")
                 
