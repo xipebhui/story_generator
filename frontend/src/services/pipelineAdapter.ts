@@ -340,12 +340,27 @@ class PipelineAdapter {
     }
     
     const task = this.tasks.get(taskId);
-    if (!task) return;
+    if (!task) {
+      console.log(`任务 ${taskId} 不在本地缓存中，跳过轮询`);
+      return;
+    }
 
     // 使用backend service的轮询功能
     const stopPolling = backendPipelineService.pollTaskStatus(
       taskId,
       (status: BackendTaskStatus) => {
+        // 检查任务是否还在本地缓存中
+        if (!this.tasks.has(taskId)) {
+          console.log(`任务 ${taskId} 已从本地缓存删除，停止更新`);
+          // 停止轮询
+          const handler = this.pollHandlers.get(taskId);
+          if (handler) {
+            handler();
+            this.pollHandlers.delete(taskId);
+          }
+          return;
+        }
+        
         // 更新任务状态 - 直接使用后端状态
         task.status = status.status as TaskStatus;
         task.progress = status.progress;
