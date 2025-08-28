@@ -251,6 +251,8 @@ class BackendPipelineService {
     interval: number = 10000
   ): () => void {
     let stopped = false;
+    let errorCount = 0;
+    const maxErrors = 3; // 最多重试3次
     
     const poll = async () => {
       if (stopped) return;
@@ -259,13 +261,38 @@ class BackendPipelineService {
         const status = await this.getTaskStatus(taskId);
         onUpdate(status);
         
+        // 重置错误计数
+        errorCount = 0;
+        
         // 如果任务还在运行，继续轮询 - 直接检查后端返回的实际状态
         if (status.status === 'pending' || status.status === 'running' || status.status === 'processing') {
           setTimeout(poll, interval);
         }
-      } catch (error) {
-        console.error('轮询状态失败:', error);
-        // 发生错误后延长轮询间隔
+      } catch (error: any) {
+        errorCount++;
+        console.error(`轮询状态失败 (${errorCount}/${maxErrors}):`, error);
+        
+        // 如果是404错误，说明任务不存在，立即停止轮询
+        // 检查多种可能的错误格式
+        const is404 = error?.response?.status === 404 || 
+                      error?.status === 404 || 
+                      error?.message?.includes('404') ||
+                      error?.message?.includes('Not Found');
+                      
+        if (is404) {
+          console.log(`任务 ${taskId} 不存在（404），停止轮询`);
+          stopped = true;
+          return;
+        }
+        
+        // 如果错误次数超过最大值，停止轮询
+        if (errorCount >= maxErrors) {
+          console.log(`任务 ${taskId} 轮询失败次数过多，停止轮询`);
+          stopped = true;
+          return;
+        }
+        
+        // 其他错误，延长轮询间隔后重试
         setTimeout(poll, interval * 2);
       }
     };

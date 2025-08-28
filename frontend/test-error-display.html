@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>错误信息展示测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            padding: 20px;
+            background: #f0f2f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #1890ff;
+        }
+        .demo-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+        h2 {
+            color: #333;
+            border-bottom: 1px solid #e8e8e8;
+            padding-bottom: 10px;
+        }
+        
+        /* 任务列表样式 */
+        .task-item {
+            background: white;
+            padding: 16px;
+            margin: 12px 0;
+            border: 1px solid #e8e8e8;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+        .task-item:hover {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        .task-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+        .task-item-title {
+            font-size: 14px;
+            font-weight: 500;
+            color: #1890ff;
+            cursor: pointer;
+        }
+        .task-item-meta {
+            display: flex;
+            gap: 16px;
+            margin-top: 8px;
+            font-size: 12px;
+            color: #8c8c8c;
+        }
+        .status-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .status-tag.failed {
+            background: #fff2f0;
+            color: #ff4d4f;
+            border: 1px solid #ffccc7;
+        }
+        
+        /* 错误信息样式 */
+        .error-info {
+            margin-top: 8px;
+            padding: 8px 12px;
+            background: rgba(255, 77, 79, 0.08);
+            border-radius: 4px;
+            font-size: 13px;
+            color: #ff4d4f;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            border-left: 3px solid #ff4d4f;
+        }
+        .error-info .icon {
+            margin-top: 2px;
+            font-size: 14px;
+            color: #ff4d4f;
+            flex-shrink: 0;
+        }
+        .error-stage {
+            font-weight: 500;
+            color: #ff4d4f;
+            margin-right: 8px;
+        }
+        .error-message {
+            color: #8c8c8c;
+            font-size: 12px;
+            line-height: 1.5;
+            word-break: break-word;
+            max-height: 40px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
+        .view-detail-btn {
+            color: #1890ff;
+            font-size: 12px;
+            cursor: pointer;
+            margin-top: 4px;
+            text-decoration: none;
+        }
+        .view-detail-btn:hover {
+            text-decoration: underline;
+        }
+        
+        /* 详情页错误展示 */
+        .alert {
+            padding: 12px 16px;
+            background: #fff2f0;
+            border: 1px solid #ffccc7;
+            border-radius: 4px;
+            margin: 16px 0;
+        }
+        .alert-error {
+            display: flex;
+            gap: 12px;
+        }
+        .alert-icon {
+            color: #ff4d4f;
+            font-size: 20px;
+        }
+        .alert-content {
+            flex: 1;
+        }
+        .alert-title {
+            font-weight: 500;
+            color: #ff4d4f;
+            margin-bottom: 8px;
+        }
+        .error-text {
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            color: #262626;
+        }
+        .error-collapsed {
+            max-height: 100px;
+            overflow: hidden;
+            position: relative;
+        }
+        .error-collapsed::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 20px;
+            background: linear-gradient(transparent, #fff2f0);
+        }
+        .toggle-btn {
+            color: #1890ff;
+            cursor: pointer;
+            margin-top: 8px;
+            font-size: 14px;
+            background: none;
+            border: none;
+            padding: 4px 0;
+        }
+        .copy-btn {
+            color: #1890ff;
+            cursor: pointer;
+            margin-left: 16px;
+            font-size: 14px;
+            background: none;
+            border: none;
+            padding: 4px 8px;
+        }
+        
+        .section-divider {
+            height: 1px;
+            background: #e8e8e8;
+            margin: 24px 0;
+            position: relative;
+        }
+        .section-divider span {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%) translateY(-50%);
+            background: white;
+            padding: 0 16px;
+            color: #8c8c8c;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔴 错误信息展示功能演示</h1>
+        
+        <!-- 任务列表页展示 -->
+        <div class="demo-section">
+            <h2>1. 任务列表页 - 错误信息预览</h2>
+            <div class="task-item">
+                <div class="task-item-header">
+                    <div style="flex: 1;">
+                        <div class="task-item-title">test_user_youtube-001_example_001</div>
+                        <div class="task-item-meta">
+                            <span class="status-tag failed">❌ failed</span>
+                            <span>创建于 2025-08-28 17:30:00</span>
+                            <span>耗时: 45秒</span>
+                        </div>
+                        <div class="error-info">
+                            <span class="icon">⚠️</span>
+                            <div style="flex: 1;">
+                                <span class="error-stage">失败阶段: 语音生成</span>
+                                <div class="error-message">
+                                    连接到TTS服务失败: Connection refused at http://localhost:3030/tts. 请确保TTS服务正在运行...
+                                </div>
+                                <a class="view-detail-btn" onclick="alert('打开任务详情页')">查看详细错误</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <button style="margin-right: 8px;">重试</button>
+                        <button>删除</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="task-item">
+                <div class="task-item-header">
+                    <div style="flex: 1;">
+                        <div class="task-item-title">test_jgJ-ISI0uMc_long_error</div>
+                        <div class="task-item-meta">
+                            <span class="status-tag failed">❌ failed</span>
+                            <span>创建于 2025-08-28 16:45:00</span>
+                            <span>耗时: 120秒</span>
+                        </div>
+                        <div class="error-info">
+                            <span class="icon">⚠️</span>
+                            <div style="flex: 1;">
+                                <span class="error-stage">失败阶段: 故事生成</span>
+                                <div class="error-message">
+                                    API请求失败: Error: Request failed with status code 429. Rate limit exceeded. You have made too many requests in a short period. Please wait 60 seconds before trying again. Current usage: 150/100 requests per minute. Reset time: 2025-08-28T17:31:45Z. For more information about rate limits, please visit: https://platform.openai.com/docs/guides/rate-limits. If you continue to experience issues, please contact support with request ID: req_abc123def456...
+                                </div>
+                                <a class="view-detail-btn" onclick="alert('打开任务详情页')">查看详细错误</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <button style="margin-right: 8px;">重试</button>
+                        <button>删除</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 任务详情页展示 -->
+        <div class="demo-section">
+            <h2>2. 任务详情页 - 完整错误信息展示</h2>
+            
+            <h3>短错误信息示例：</h3>
+            <div class="alert alert-error">
+                <div class="alert-icon">⚠️</div>
+                <div class="alert-content">
+                    <div class="alert-title">任务执行失败</div>
+                    <div class="error-text">连接到TTS服务失败: Connection refused at http://localhost:3030/tts. 请确保TTS服务正在运行。</div>
+                </div>
+            </div>
+
+            <div class="section-divider">
+                <span>分隔线</span>
+            </div>
+
+            <h3>长错误信息示例（支持折叠）：</h3>
+            <div class="alert alert-error">
+                <div class="alert-icon">⚠️</div>
+                <div class="alert-content">
+                    <div class="alert-title">任务执行失败</div>
+                    <div id="longError" class="error-text error-collapsed">
+Traceback (most recent call last):
+  File "/app/pipeline/story_generator.py", line 245, in generate_story
+    response = await self.api_client.create_completion(
+        model="gpt-4",
+        messages=messages,
+        temperature=0.8,
+        max_tokens=4000
+    )
+  File "/app/clients/openai_client.py", line 89, in create_completion
+    response = await self.client.chat.completions.create(**kwargs)
+  File "/usr/local/lib/python3.9/site-packages/openai/resources/chat/completions.py", line 1234, in create
+    return await self._post(
+  File "/usr/local/lib/python3.9/site-packages/openai/_base_client.py", line 1678, in post
+    return await self.request(cast_to, opts, stream=stream)
+  File "/usr/local/lib/python3.9/site-packages/openai/_base_client.py", line 1456, in request
+    return await self._request(
+  File "/usr/local/lib/python3.9/site-packages/openai/_base_client.py", line 1532, in _request
+    raise APIStatusError(response, body)
+openai.RateLimitError: Error code: 429 - {
+  "error": {
+    "message": "Rate limit reached for gpt-4 in organization org-xxx on tokens per min. Limit: 40000, Used: 38567, Requested: 4000. Please try again in 3.7s.",
+    "type": "tokens",
+    "param": null,
+    "code": "rate_limit_exceeded"
+  }
+}
+
+Additional Context:
+- Request ID: req_abc123def456
+- Organization: org-xxx
+- Model: gpt-4
+- Current usage: 38567/40000 tokens
+- Requested: 4000 tokens
+- Reset time: 3.7 seconds
+
+Suggested Actions:
+1. Implement exponential backoff retry logic
+2. Consider using a queue system to manage API requests
+3. Monitor token usage and implement request throttling
+4. Upgrade to a higher tier for increased rate limits</div>
+                    <button class="toggle-btn" onclick="toggleError()">查看更多</button>
+                    <button class="copy-btn" onclick="copyError()" style="display: none;" id="copyBtn">📋 复制错误信息</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 功能说明 -->
+        <div class="demo-section">
+            <h2>3. 功能特性说明</h2>
+            <ul>
+                <li><strong>列表页预览</strong>：显示错误信息的前100个字符，最多2行，超出部分省略</li>
+                <li><strong>详情页完整展示</strong>：显示完整错误信息</li>
+                <li><strong>智能折叠</strong>：超过200字符的错误信息默认折叠，可展开查看</li>
+                <li><strong>一键复制</strong>：展开后提供复制按钮，方便错误信息的分享和调试</li>
+                <li><strong>视觉层级</strong>：使用红色主题和图标强调错误状态</li>
+                <li><strong>格式保留</strong>：使用等宽字体显示错误堆栈，保持原始格式</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        let expanded = false;
+        
+        function toggleError() {
+            const errorEl = document.getElementById('longError');
+            const btn = document.querySelector('.toggle-btn');
+            const copyBtn = document.getElementById('copyBtn');
+            
+            expanded = !expanded;
+            
+            if (expanded) {
+                errorEl.classList.remove('error-collapsed');
+                btn.textContent = '收起';
+                copyBtn.style.display = 'inline-block';
+            } else {
+                errorEl.classList.add('error-collapsed');
+                btn.textContent = '查看更多';
+                copyBtn.style.display = 'none';
+            }
+        }
+        
+        function copyError() {
+            const errorText = document.getElementById('longError').textContent;
+            navigator.clipboard.writeText(errorText).then(() => {
+                alert('错误信息已复制到剪贴板');
+            });
+        }
+    </script>
+</body>
+</html>

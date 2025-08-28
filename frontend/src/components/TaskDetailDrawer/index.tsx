@@ -64,6 +64,7 @@ const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
   const [loading, setLoading] = useState(false);
   const [showChineseTitles, setShowChineseTitles] = useState(false);
   const [showChineseDesc, setShowChineseDesc] = useState(false);
+  const [errorExpanded, setErrorExpanded] = useState(false);  // 控制错误信息展开/折叠
 
   // 加载任务结果
   useEffect(() => {
@@ -304,6 +305,69 @@ const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
                   </Timeline.Item>
                 ))}
               </Timeline>
+            </>
+          )}
+
+          {/* 错误信息展示 */}
+          {task.error_message && (
+            <>
+              <Divider>错误信息</Divider>
+              <Alert
+                message="任务执行失败"
+                description={
+                  <div>
+                    {(() => {
+                      const errorMessage = task.error_message || '';
+                      const isLongError = errorMessage.length > 200;
+                      
+                      if (!isLongError) {
+                        return (
+                          <Text style={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
+                            {errorMessage}
+                          </Text>
+                        );
+                      }
+                      
+                      // 长错误信息，支持折叠
+                      return (
+                        <div>
+                          <Text style={{ 
+                            whiteSpace: 'pre-wrap', 
+                            fontFamily: 'monospace',
+                            display: 'block'
+                          }}>
+                            {errorExpanded 
+                              ? errorMessage 
+                              : errorMessage.substring(0, 200) + '...'}
+                          </Text>
+                          <Button
+                            type="link"
+                            size="small"
+                            onClick={() => setErrorExpanded(!errorExpanded)}
+                            style={{ padding: '4px 0', marginTop: 8 }}
+                          >
+                            {errorExpanded ? '收起' : '查看更多'}
+                          </Button>
+                          {errorExpanded && (
+                            <Button
+                              type="link"
+                              size="small"
+                              icon={<CopyOutlined />}
+                              onClick={() => copyToClipboard(errorMessage, '错误信息')}
+                              style={{ marginLeft: 16 }}
+                            >
+                              复制错误信息
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                }
+                type="error"
+                showIcon
+                style={{ marginBottom: 16 }}
+              />
             </>
           )}
         </TabPane>

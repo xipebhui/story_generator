@@ -93,6 +93,21 @@ const Dashboard: React.FC = () => {
     try {
       const response = await pipelineAdapter.listTasks();
       const taskList = response.tasks || [];
+      
+      // 打印任务数据，查看是否有error_message
+      console.log('=== Dashboard 收到的任务列表 ===');
+      console.log('任务总数:', taskList.length);
+      taskList.forEach((task: Task) => {
+        if (task.status === 'failed') {
+          console.log('失败任务:', {
+            task_id: task.task_id,
+            status: task.status,
+            error_message: task.error_message,
+            全部字段: Object.keys(task)
+          });
+        }
+      });
+      
       setTasks(taskList);
       setLastRefreshTime(new Date());
       
@@ -221,10 +236,10 @@ const Dashboard: React.FC = () => {
                 </span>
               )}
             </div>
-            {task.status === 'failed' && (
+            {task.status === 'failed' && task.error_message && (
               <div className="error-info">
                 <ExclamationCircleOutlined />
-                <div>
+                <div style={{ flex: 1 }}>
                   <span className="error-stage">
                     失败阶段: {(() => {
                       // 从 progress 对象中找到失败的阶段
@@ -237,11 +252,33 @@ const Dashboard: React.FC = () => {
                       return task.current_stage || '未知';
                     })()}
                   </span>
-                  {task.error_message && (
-                    <div className="error-message">
-                      {task.error_message}
-                    </div>
-                  )}
+                  <div className="error-message" style={{ 
+                    marginTop: 4,
+                    fontSize: 12,
+                    color: '#ff4d4f',
+                    maxHeight: 40,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    lineHeight: '20px'
+                  }}>
+                    {task.error_message.length > 100 
+                      ? task.error_message.substring(0, 100) + '...' 
+                      : task.error_message}
+                  </div>
+                  <Button
+                    type="link"
+                    size="small"
+                    style={{ padding: 0, height: 'auto', marginTop: 4 }}
+                    onClick={() => {
+                      setSelectedTask(task);
+                      setDetailDrawerVisible(true);
+                    }}
+                  >
+                    查看详细错误
+                  </Button>
                 </div>
               </div>
             )}

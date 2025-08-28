@@ -64,8 +64,18 @@ account_service = get_account_service()
 # 始终使用真实的YouTube上传API
 publish_service = get_publish_service(use_mock=False)  # 强制使用真实接口
 
-# 初始化账号数据
-account_service.initialize_accounts()
+# 初始化账号数据（只在账号表为空时初始化）
+# 如果已有账号数据，不会重置
+try:
+    existing_accounts = account_service.get_all_accounts(active_only=False)
+    if not existing_accounts:
+        logger.info("账号表为空，初始化默认账号...")
+        account_service.initialize_accounts()
+    else:
+        logger.info(f"已存在 {len(existing_accounts)} 个账号，跳过初始化")
+except Exception as e:
+    logger.warning(f"检查账号时出错: {e}，尝试初始化...")
+    account_service.initialize_accounts()
 
 # ============ 定时发布调度器 ============
 class PublishScheduler:
@@ -263,6 +273,7 @@ class PublishRequest(BaseModel):
     video_tags: Optional[List[str]] = None
     thumbnail_path: Optional[str] = None
     scheduled_time: Optional[datetime] = None
+    publish_interval_hours: Optional[float] = None  # 发布间隔（小时）
     privacy_status: str = 'public'
 
 class HistoryQuery(BaseModel):
@@ -824,7 +835,7 @@ async def retry_task(
 ):
     """重试失败的任务
     
-    为失败的任务创建新的任务ID并重新执行，保留原始参数
+    直接在原任务上重新执行，不创建新的任务ID
     """
     # 获取原始任务
     original_task = db_manager.get_task(task_id)
@@ -840,23 +851,12 @@ async def retry_task(
             detail=f"只能重试失败或已完成的任务，当前状态: {task_dict['status']}"
         )
     
-    # 生成新的任务ID
-    parts = task_id.split('_')
-    if len(parts) < 3:
-        raise HTTPException(status_code=400, detail="无效的任务ID格式")
-    
     # 获取原始参数
     creator_id = task_dict['creator_id']
     video_id = task_dict['video_id'] 
     account_name = task_dict.get('account_name')
     
-    # 生成新的任务ID（使用新的UUID）
-    if account_name:
-        new_task_id = f"{creator_id}_{account_name}_{video_id}_{uuid.uuid4().hex[:8]}"
-    else:
-        new_task_id = f"{creator_id}_{video_id}_{uuid.uuid4().hex[:8]}"
-    
-    # 创建新的请求对象
+    # 创建请求对象（使用原任务的所有参数）
     retry_request = PipelineRequest(
         video_id=video_id,
         creator_id=creator_id,
@@ -868,17 +868,14 @@ async def retry_task(
         enable_subtitle=task_dict.get('enable_subtitle', True)
     )
     
-    # 创建新的任务记录
-    new_task_data = {
-        'task_id': new_task_id,
-        'video_id': video_id,
-        'creator_id': creator_id,
-        'account_name': account_name,
-        'gender': retry_request.gender,
-        'duration': retry_request.duration,
-        'image_dir': retry_request.image_dir,
-        'export_video': retry_request.export_video,
-        'enable_subtitle': retry_request.enable_subtitle,
+    # 重置原任务的状态和进度
+    reset_data = {
+        'status': 'pending',
+        'started_at': None,
+        'completed_at': None,
+        'current_stage': None,
+        'error_message': None,
+        'retry_count': task_dict.get('retry_count', 0) + 1,
         'progress': {
             "故事二创": "待处理",
             "语音生成": "待处理",
@@ -887,20 +884,22 @@ async def retry_task(
     }
     
     if retry_request.export_video:
-        new_task_data['progress']["视频导出"] = "待处理"
+        reset_data['progress']["视频导出"] = "待处理"
     
-    # 创建任务记录
-    db_task = db_manager.create_task(new_task_data)
+    # 更新原任务状态
+    db_manager.update_task(task_id, reset_data)
     
-    # 添加后台任务
-    background_tasks.add_task(run_pipeline_async, new_task_id, retry_request)
+    # 后台执行（使用原任务ID）
+    background_tasks.add_task(run_pipeline_async, task_id, retry_request)
+    
+    logger.info(f"重试任务: {task_id} (第 {reset_data['retry_count']} 次重试)")
     
     return {
-        "task_id": new_task_id,
-        "message": f"重试任务已创建（原任务: {task_id}）",
-        "status_url": f"/api/pipeline/status/{new_task_id}",
-        "result_url": f"/api/pipeline/result/{new_task_id}",
-        "original_task_id": task_id
+        "task_id": task_id,
+        "message": f"任务已开始重试 (第 {reset_data['retry_count']} 次)",
+        "retry_count": reset_data['retry_count'],
+        "status_url": f"/api/pipeline/status/{task_id}",
+        "result_url": f"/api/pipeline/result/{task_id}"
     }
 
 # ============ 发布相关端点 ============
@@ -1056,12 +1055,26 @@ async def upload_thumbnail(
 
 @app.post("/api/publish/schedule")
 async def schedule_publish(request: PublishRequest):
-    """创建定时发布任务（支持立即发布和定时发布）"""
+    """创建定时发布任务（支持立即发布、定时发布和间隔发布）"""
     results = []
     immediate_tasks = []
     scheduled_tasks = []
     
-    for account_id in request.account_ids:
+    # 计算发布时间
+    current_time = get_beijing_now()
+    
+    for i, account_id in enumerate(request.account_ids):
+        # 计算每个账号的发布时间
+        if request.publish_interval_hours is not None and request.publish_interval_hours > 0:
+            # 间隔发布模式：第一个立即发布，后续按间隔时间递增
+            if i == 0:
+                scheduled_time = None  # 第一个立即发布
+            else:
+                scheduled_time = current_time + timedelta(hours=request.publish_interval_hours * i)
+        else:
+            # 使用传入的定时时间或立即发布
+            scheduled_time = request.scheduled_time
+        
         # 创建发布任务
         publish_task = publish_service.create_publish_task(
             task_id=request.task_id,
@@ -1070,21 +1083,21 @@ async def schedule_publish(request: PublishRequest):
             video_description=request.video_description,
             video_tags=request.video_tags,
             thumbnail_path=request.thumbnail_path,
-            scheduled_time=request.scheduled_time,
+            scheduled_time=scheduled_time,
             privacy_status=request.privacy_status
         )
         
         if publish_task:
-            if request.scheduled_time and request.scheduled_time > get_beijing_now():
+            if scheduled_time and scheduled_time > current_time:
                 # 定时发布：添加到调度器
-                publish_scheduler.add_task(publish_task['publish_id'], request.scheduled_time)
+                publish_scheduler.add_task(publish_task['publish_id'], scheduled_time)
                 scheduled_tasks.append(publish_task)
                 results.append({
                     'publish_id': publish_task['publish_id'],
                     'account_id': account_id,
                     'status': 'scheduled',
-                    'scheduled_time': request.scheduled_time.isoformat(),
-                    'message': f'已安排在 {request.scheduled_time} 发布'
+                    'scheduled_time': scheduled_time.isoformat(),
+                    'message': f'已安排在 {scheduled_time.strftime("%Y-%m-%d %H:%M:%S")} 发布'
                 })
             else:
                 # 立即发布

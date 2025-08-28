@@ -210,8 +210,8 @@ const PublishModal: React.FC<PublishModalProps> = ({
         }
       }
       
-      // 使用后端发布服务
-      await backendAccountService.createPublish({
+      // 准备发布参数
+      const publishParams: any = {
         task_id: task!.task_id,
         account_ids: [values.account_id],
         video_title: title,
@@ -219,7 +219,18 @@ const PublishModal: React.FC<PublishModalProps> = ({
         video_tags: values.tags?.split(',').map((t: string) => t.trim()).filter(Boolean),
         privacy_status: 'public',
         thumbnail_path: uploadedThumbnailPath || undefined
-      });
+      };
+      
+      // 根据发布模式设置参数
+      if (publishMode === 'scheduled' && values.publish_time) {
+        publishParams.scheduled_time = values.publish_time.toISOString();
+      } else if (publishMode === 'interval' && values.publish_interval) {
+        // 将分钟转换为小时
+        publishParams.publish_interval_hours = values.publish_interval / 60;
+      }
+      
+      // 使用后端发布服务
+      await backendAccountService.createPublish(publishParams);
       
       message.success('发布任务已创建！');
       onSuccess();

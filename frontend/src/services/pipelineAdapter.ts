@@ -61,8 +61,22 @@ class PipelineAdapter {
         page_size: 100
       });
       
+      console.log('=== 从后端获取的任务历史数据 ===');
+      console.log('任务总数:', history.tasks.length);
+      
       // 合并后端任务到本地任务列表
       history.tasks.forEach(backendTask => {
+        // 打印每个失败任务的详细信息
+        if (backendTask.status === 'failed') {
+          console.log('失败任务详情:', {
+            task_id: backendTask.task_id,
+            status: backendTask.status,
+            error_message: backendTask.error_message,
+            error: backendTask.error,
+            全部字段: Object.keys(backendTask)
+          });
+        }
+        
         if (!this.tasks.has(backendTask.task_id)) {
           const task: Task = {
             task_id: backendTask.task_id,
@@ -74,12 +88,18 @@ class PipelineAdapter {
             completed_at: backendTask.completed_at || backendTask.end_time,
             total_duration: backendTask.total_duration,
             duration: backendTask.duration,
-            error_message: backendTask.error_message,
+            error_message: backendTask.error_message || backendTask.error, // 尝试从error字段获取
             params: {
               video_id: backendTask.video_id,
               creator_id: backendTask.creator_id
             }
           };
+          
+          // 如果有error_message，打印出来
+          if (task.error_message) {
+            console.log(`任务 ${task.task_id} 有错误信息:`, task.error_message);
+          }
+          
           this.tasks.set(backendTask.task_id, task);
           
           // 如果任务还在运行，开始轮询
