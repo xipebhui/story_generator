@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>图库API测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #1890ff;
+            padding-bottom: 10px;
+        }
+        .api-test {
+            margin: 20px 0;
+        }
+        .api-test button {
+            background: #1890ff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .api-test button:hover {
+            background: #40a9ff;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f0f2f5;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        .success {
+            background: #f6ffed;
+            border-left: 4px solid #52c41a;
+        }
+        .error {
+            background: #fff2e8;
+            border-left: 4px solid #ff4d4f;
+        }
+        .library-item {
+            background: white;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+        }
+        .library-name {
+            font-weight: bold;
+            color: #1890ff;
+        }
+        .library-path {
+            color: #666;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>图库API测试</h1>
+        
+        <div class="api-test">
+            <h2>测试图库接口</h2>
+            <p>API端点: GET /api/image_libraries</p>
+            <input type="text" id="apiKey" placeholder="请输入API Key" style="padding: 8px; width: 300px; margin-right: 10px;">
+            <button onclick="testImageLibraries()">测试接口</button>
+            <div id="result" class="result"></div>
+        </div>
+    </div>
+
+    <script>
+        async function testImageLibraries() {
+            const apiKey = document.getElementById('apiKey').value;
+            const resultDiv = document.getElementById('result');
+            
+            if (!apiKey) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = '请先输入API Key';
+                return;
+            }
+            
+            resultDiv.className = 'result';
+            resultDiv.textContent = '正在请求...';
+            
+            try {
+                const response = await fetch('/api/image_libraries', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.className = 'result success';
+                    
+                    // 格式化显示结果
+                    let html = '<strong>请求成功！</strong>\n\n';
+                    html += `状态: ${data.success ? '成功' : '失败'}\n`;
+                    html += `图库总数: ${data.count}\n\n`;
+                    
+                    if (data.libraries && data.libraries.length > 0) {
+                        html += '<strong>图库列表：</strong>\n';
+                        data.libraries.forEach((lib, index) => {
+                            html += `\n[图库 ${index + 1}]\n`;
+                            html += `  ID: ${lib.id}\n`;
+                            html += `  名称: ${lib.library_name}\n`;
+                            html += `  路径: ${lib.library_path}\n`;
+                            html += `  创建时间: ${lib.created_at}\n`;
+                            html += `  更新时间: ${lib.updated_at || '无'}\n`;
+                        });
+                    } else {
+                        html += '暂无图库';
+                    }
+                    
+                    html += '\n\n<strong>原始响应：</strong>\n';
+                    html += JSON.stringify(data, null, 2);
+                    
+                    resultDiv.innerHTML = html;
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.textContent = `错误 ${response.status}: ${data.detail || '请求失败'}`;
+                }
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `网络错误: ${error.message}`;
+            }
+        }
+        
+        // 加载页面时自动填充上次使用的API Key（如果有）
+        window.onload = function() {
+            const savedKey = localStorage.getItem('api_key');
+            if (savedKey) {
+                document.getElementById('apiKey').value = savedKey;
+            }
+        };
+        
+        // 保存API Key到本地存储
+        document.getElementById('apiKey').addEventListener('change', function() {
+            localStorage.setItem('api_key', this.value);
+        });
+    </script>
+</body>
+</html>

@@ -958,7 +958,8 @@ def generate_draft_from_story(cid: str, vid: str,
                              enable_keyframes: bool = True,  # 默认启用
                              enable_subtitle: bool = True,  # 默认启用字幕（向后兼容）
                              image_scale: float = 1.8,  # 图片缩放比例
-                             random_seed: Optional[int] = None):
+                             random_seed: Optional[int] = None,
+                             image_dir: Optional[str] = None):  # 图库路径参数
     """
     根据故事ID生成剪映草稿
     
@@ -971,14 +972,53 @@ def generate_draft_from_story(cid: str, vid: str,
         enable_keyframes: 是否启用关键帧动画（默认启用）
         image_scale: 图片缩放比例（默认1.8）
         random_seed: 随机种子
+        image_dir: 图库路径或图库名称
     
     Returns:
         生成的草稿目录路径
     """
     
+    # 处理图库路径
+    if image_dir:
+        # 如果不是绝对路径，尝试作为图库名称查询
+        if not os.path.isabs(image_dir) and not os.path.exists(image_dir):
+            # 导入数据库模块
+            sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+            from database import get_db_manager
+            
+            db = get_db_manager()
+            library = db.get_image_library_by_name(image_dir)
+            if library:
+                images_dir = library.library_path
+                print(f"使用图库 '{image_dir}': {images_dir}")
+            else:
+                # 如果找不到图库，使用默认路径
+                print(f"警告: 找不到图库 '{image_dir}'，使用默认图库")
+                default_lib = db.get_image_library_by_name('default')
+                if default_lib:
+                    images_dir = default_lib.library_path
+                else:
+                    images_dir = "./output/images"
+        else:
+            # 如果是绝对路径或存在的相对路径，直接使用
+            images_dir = image_dir
+            print(f"使用指定路径: {images_dir}")
+    else:
+        # 如果没有指定，使用默认图库
+        sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+        from database import get_db_manager
+        
+        db = get_db_manager()
+        default_lib = db.get_image_library_by_name('default')
+        if default_lib:
+            images_dir = default_lib.library_path
+            print(f"使用默认图库: {images_dir}")
+        else:
+            images_dir = "./output/images"
+            print(f"使用默认路径: {images_dir}")
+    
     # 构建路径
     audio_path = f"./output/{cid}_{vid}_story.mp3"
-    images_dir = "./output/images"
     video_title = f"{cid}_{vid}_story"
     output_dir = "./output/drafts"
     
@@ -1036,6 +1076,8 @@ def main():
                        help='图片缩放比例，默认1.8')
     parser.add_argument('--seed', type=int, default=None,
                        help='随机种子，用于复现结果（不设置则完全随机）')
+    parser.add_argument('--image_dir', type=str, default=None,
+                       help='图库路径或图库名称（如default），不指定则使用默认图库')
     
     # 解析参数
     args = parser.parse_args()
@@ -1051,6 +1093,8 @@ def main():
     print(f"关键帧动画: {'启用' if not args.no_keyframes else '禁用'}")
     print(f"字幕: {'启用' if args.enable_subtitle else '禁用'}")
     print(f"图片缩放比例: {args.scale}x")
+    if args.image_dir:
+        print(f"图库: {args.image_dir}")
     print(f"{'=' * 60}\n")
     
     try:
@@ -1064,7 +1108,8 @@ def main():
             enable_keyframes=not args.no_keyframes,  # 注意：使用 not args.no_keyframes
             enable_subtitle=args.enable_subtitle,  # 默认False，需要显式启用
             image_scale=args.scale,
-            random_seed=args.seed
+            random_seed=args.seed,
+            image_dir=args.image_dir  # 传递图库参数
         )
         
         print(f"\n[SUCCESS] 草稿已生成到: {draft_dir}")

@@ -283,9 +283,22 @@ const Dashboard: React.FC = () => {
                     console.log('更新本地任务状态...');
                     setTasks(prevTasks => {
                       console.log('重试后更新前任务列表:', prevTasks.map(t => ({ id: t.task_id, status: t.status })));
-                      const newTasks = prevTasks.map(t => 
-                        t.task_id === task.task_id ? updatedTask : t
-                      );
+                      
+                      let newTasks;
+                      // 如果返回的任务ID不同（后端创建了新任务），需要替换原任务
+                      if (updatedTask.task_id !== task.task_id) {
+                        console.log('后端创建了新任务，替换原任务:', task.task_id, '->', updatedTask.task_id);
+                        // 过滤掉原任务，添加新任务
+                        newTasks = prevTasks.filter(t => t.task_id !== task.task_id);
+                        // 将新任务添加到列表顶部
+                        newTasks.unshift(updatedTask);
+                      } else {
+                        // ID相同，直接更新
+                        newTasks = prevTasks.map(t => 
+                          t.task_id === task.task_id ? updatedTask : t
+                        );
+                      }
+                      
                       console.log('重试后更新后任务列表:', newTasks.map(t => ({ id: t.task_id, status: t.status })));
                       console.log('任务列表是否有重复:', newTasks.length !== new Set(newTasks.map(t => t.task_id)).size);
                       return newTasks;

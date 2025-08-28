@@ -131,6 +131,21 @@ export interface YouTubeAccount {
   video_count?: number;
 }
 
+// 图库相关类型
+export interface ImageLibrary {
+  id: number;
+  library_name: string;
+  library_path: string;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface ImageLibrariesResponse {
+  success: boolean;
+  libraries: ImageLibrary[];
+  count: number;
+}
+
 export interface AccountsResponse {
   accounts: YouTubeAccount[];
   total: number;
@@ -198,8 +213,8 @@ class BackendPipelineService {
   }
   
   // 重试Pipeline任务
-  async retryPipeline(taskId: string, accountName?: string): Promise<CreatePipelineResponse & { original_task_id: string }> {
-    return apiRequest<CreatePipelineResponse & { original_task_id: string }>(`/pipeline/retry/${taskId}`, {
+  async retryPipeline(taskId: string, accountName?: string): Promise<CreatePipelineResponse> {
+    return apiRequest<CreatePipelineResponse>(`/pipeline/retry/${taskId}`, {
       method: 'POST',
       body: accountName ? JSON.stringify({ account_name: accountName }) : undefined
     });
@@ -271,6 +286,20 @@ class BackendAccountService {
   async getAccounts(): Promise<YouTubeAccount[]> {
     const response = await apiRequest<AccountsResponse>('/accounts');
     return response.accounts;
+  }
+
+  // 获取图库列表
+  async getImageLibraries(): Promise<ImageLibrary[]> {
+    try {
+      const response = await apiRequest<ImageLibrariesResponse>('/image_libraries');
+      if (response.success) {
+        return response.libraries;
+      }
+      return [];
+    } catch (error) {
+      console.error('获取图库列表失败:', error);
+      return [];
+    }
   }
 
   // 创建新账号

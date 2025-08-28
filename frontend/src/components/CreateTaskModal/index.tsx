@@ -24,7 +24,7 @@ import { workflows, getWorkflowConfig, getWorkflowDefaults } from '../../config/
 import { pipelineAdapter } from '../../services/pipelineAdapter';
 import { PipelineRequest } from '../../types/api';
 import { backendAccountService } from '../../services/backend';
-import { YouTubeAccount } from '../../services/backend';
+import { YouTubeAccount, ImageLibrary } from '../../services/backend';
 
 interface CreateTaskModalProps {
   visible: boolean;
@@ -43,11 +43,13 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState<string>(workflowKey || '');
   const [accounts, setAccounts] = useState<YouTubeAccount[]>([]);
+  const [imageLibraries, setImageLibraries] = useState<ImageLibrary[]>([]);
 
-  // 加载账号列表
+  // 加载账号列表和图库列表
   useEffect(() => {
     if (visible) {
       loadAccounts();
+      loadImageLibraries();
     }
   }, [visible]);
 
@@ -71,6 +73,22 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
     } catch (error) {
       console.error('加载账号列表失败:', error);
       setAccounts([]);
+    }
+  };
+
+  // 加载图库列表
+  const loadImageLibraries = async () => {
+    try {
+      const libraries = await backendAccountService.getImageLibraries();
+      setImageLibraries(libraries);
+      
+      // 如果有图库，设置默认选中第一个
+      if (libraries.length > 0 && !form.getFieldValue('image_library')) {
+        form.setFieldValue('image_library', libraries[0].library_name);
+      }
+    } catch (error) {
+      console.error('加载图库列表失败:', error);
+      setImageLibraries([]);
     }
   };
 
@@ -100,6 +118,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
         gender: values.gender || 1,
         duration: values.duration || 60,
         image_dir: values.image_dir,
+        image_library: values.image_library,  // 添加图库名称
         export_video: values.export_video !== undefined ? values.export_video : true,
         enable_subtitle: values.enable_subtitle !== undefined ? values.enable_subtitle : true,
         // 添加工作流特定参数
@@ -161,6 +180,33 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
             </Form.Item>
           );
         }
+        // 如果是图库选择字段，使用动态加载的图库列表
+        if (field.name === 'image_library') {
+          return (
+            <Form.Item {...commonProps}>
+              <Select 
+                placeholder={field.placeholder || `请选择${field.label}`}
+                allowClear={false}
+              >
+                {imageLibraries.map(library => (
+                  <Select.Option 
+                    key={library.library_name} 
+                    value={library.library_name}
+                  >
+                    <Tooltip title={library.library_path}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>{library.library_name}</span>
+                        <span style={{ fontSize: 12, color: '#8c8c8c' }}>
+                          {library.library_path.split('/').slice(-2).join('/')}
+                        </span>
+                      </div>
+                    </Tooltip>
+                  </Select.Option>
+                ))}
+              </Select>
+            </Form.Item>
+          );
+        }
         return (
           <Form.Item {...commonProps}>
             <Select placeholder={`请选择${field.label}`}>
@@ -168,7 +214,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                 <Select.Option key={option.value} value={option.value}>
                   {option.label}
                 </Select.Option>
-              ))}
+                ))}
             </Select>
           </Form.Item>
         );
@@ -193,6 +239,45 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
         );
       
       case 'folder':
+        // 如果是image_dir字段，改为图库选择
+        if (field.name === 'image_dir') {
+          return (
+            <Form.Item 
+              {...commonProps}
+              name="image_library"
+              label={
+                <Space>
+                  {field.icon}
+                  图库选择
+                  <Tooltip title="选择需要使用的图片库">
+                    <InfoCircleOutlined style={{ color: '#8c8c8c' }} />
+                  </Tooltip>
+                </Space>
+              }
+            >
+              <Select 
+                placeholder="请选择图库"
+                allowClear={false}
+              >
+                {imageLibraries.map(library => (
+                  <Select.Option 
+                    key={library.library_name} 
+                    value={library.library_name}
+                  >
+                    <Tooltip title={library.library_path}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>{library.library_name}</span>
+                        <span style={{ fontSize: 12, color: '#8c8c8c' }}>
+                          {library.library_path.split('/').slice(-2).join('/')}
+                        </span>
+                      </div>
+                    </Tooltip>
+                  </Select.Option>
+                ))}
+              </Select>
+            </Form.Item>
+          );
+        }
         return (
           <Form.Item {...commonProps}>
             <Input placeholder={field.placeholder} />

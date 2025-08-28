@@ -1437,6 +1437,28 @@ async def delete_account(
             "account_id": account_id
         }
 
+# ============ 图库管理端点 ============
+
+@app.get("/api/image_libraries")
+async def get_image_libraries(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    获取所有图库列表
+    """
+    try:
+        db_manager = get_db_manager()
+        libraries = db_manager.get_all_image_libraries()
+        
+        return {
+            "success": True,
+            "libraries": [lib.to_dict() for lib in libraries],
+            "count": len(libraries)
+        }
+    except Exception as e:
+        logger.error(f"获取图库列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ============ 其他端点 ============
 
 @app.get("/health")

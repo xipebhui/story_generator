@@ -31,5 +31,9 @@ pywin32>=305 ; sys_platform == 'win32'
 # Authentication dependencies
 passlib[bcrypt]>=1.7.4
 python-jose[cryptography]>=3.3.0
-passlib[bcrypt] 
-python-jose[cryptography]
+
+# Timezone support
+pytz>=2024.1
+
+# CORS support (already included in fastapi)
+# python-multipart is already listed above

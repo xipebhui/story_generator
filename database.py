@@ -186,6 +186,27 @@ class Account(Base):
         }
 
 
+class ImageLibrary(Base):
+    """图库表 - 存储图库名称和路径"""
+    __tablename__ = 'image_libraries'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    library_name = Column(String(100), unique=True, nullable=False, index=True)
+    library_path = Column(String(500), nullable=False)
+    created_at = Column(BeijingDateTime, default=beijing_now, nullable=False)
+    updated_at = Column(BeijingDateTime, onupdate=beijing_now, nullable=True)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典"""
+        return {
+            'id': self.id,
+            'library_name': self.library_name,
+            'library_path': self.library_path,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
 class PublishTask(Base):
     """发布任务表"""
     __tablename__ = 'publish_tasks'
@@ -545,6 +566,27 @@ class DatabaseManager:
             session.commit()
             session.refresh(user)
             return user
+    
+    # ============ 图库管理 ============
+    
+    def get_all_image_libraries(self) -> List[ImageLibrary]:
+        """获取所有图库"""
+        with self.get_session() as session:
+            return session.query(ImageLibrary).order_by(ImageLibrary.library_name).all()
+    
+    def get_image_library_by_name(self, library_name: str) -> Optional[ImageLibrary]:
+        """根据名称获取图库"""
+        with self.get_session() as session:
+            return session.query(ImageLibrary).filter_by(library_name=library_name).first()
+    
+    def create_image_library(self, library_data: Dict[str, Any]) -> ImageLibrary:
+        """创建图库"""
+        with self.get_session() as session:
+            library = ImageLibrary(**library_data)
+            session.add(library)
+            session.commit()
+            session.refresh(library)
+            return library
     
     # ============ 统计功能 ============
     

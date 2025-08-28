@@ -101,7 +101,7 @@ class PipelineAdapter {
     };
   }
 
-  // 重试失败的任务 - 在原任务上重试，不创建新任务
+  // 重试失败的任务 - 处理后端创建新ID的情况
   async retryTask(taskId: string): Promise<Task> {
     try {
       // 获取原任务信息
@@ -113,20 +113,64 @@ class PipelineAdapter {
       // 获取原任务的account_name参数
       const accountName = originalTask?.params?.account_name;
       
-      // 调用后端重试接口，传递account_name
-      await backendPipelineService.retryPipeline(taskId, accountName);
+      // 调用后端重试接口，后端会返回新的任务ID
+      console.log('[PipelineAdapter] 调用后端重试接口，原任务ID:', taskId);
+      const response = await backendPipelineService.retryPipeline(taskId, accountName);
+      console.log('[PipelineAdapter] 后端返回新任务:', response);
       
-      // 更新原任务状态为pending，重置进度
-      originalTask.status = 'pending';
-      originalTask.progress = 0;
-      originalTask.current_stage = null;
-      originalTask.error_message = undefined;
-      originalTask.completed_at = undefined;
+      // 后端返回了新的任务ID，我们需要：
+      // 1. 从本地删除原任务
+      // 2. 创建新任务并使用新ID
+      const newTaskId = response.task_id;
       
-      // 重新开始轮询原任务状态
-      this.startStatusPolling(taskId);
-      
-      return originalTask;
+      if (newTaskId !== taskId) {
+        console.log('[PipelineAdapter] 后端创建了新任务ID:', newTaskId, '原ID:', taskId);
+        
+        // 删除原任务
+        this.tasks.delete(taskId);
+        this.results.delete(taskId);
+        
+        // 停止原任务的轮询
+        const stopPolling = this.pollHandlers.get(taskId);
+        if (stopPolling) {
+          stopPolling();
+          this.pollHandlers.delete(taskId);
+        }
+        
+        // 创建新任务对象，保持原任务的参数
+        const newTask: Task = {
+          ...originalTask,
+          task_id: newTaskId,
+          status: 'pending',
+          progress: 0,
+          current_stage: null,
+          error_message: undefined,
+          completed_at: undefined,
+          created_at: new Date().toISOString() // 更新创建时间
+        };
+        
+        // 保存新任务
+        this.tasks.set(newTaskId, newTask);
+        
+        // 开始轮询新任务状态
+        this.startStatusPolling(newTaskId);
+        
+        console.log('[PipelineAdapter] 重试任务成功，新任务ID:', newTaskId);
+        return newTask;
+      } else {
+        // 如果任务ID相同（理论上不应该发生），使用原逻辑
+        console.log('[PipelineAdapter] 任务ID未变化，更新原任务状态');
+        originalTask.status = 'pending';
+        originalTask.progress = 0;
+        originalTask.current_stage = null;
+        originalTask.error_message = undefined;
+        originalTask.completed_at = undefined;
+        
+        // 重新开始轮询原任务状态
+        this.startStatusPolling(taskId);
+        
+        return originalTask;
+      }
     } catch (error) {
       console.error('重试任务失败:', error);
       throw error;
