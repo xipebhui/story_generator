@@ -11,6 +11,7 @@ import uuid
 import logging
 import asyncio
 import aiohttp
+import re
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pathlib import Path
@@ -164,19 +165,39 @@ class PublishService:
                     'upload_started_at': datetime.now()
                 })
                 
-                # 处理标签 - 从youtube_metadata中获取
+                # 处理标签 - 只使用英文标签
                 tags_data = youtube_metadata.get('tags', [])
+                english_tags = []
+                
                 if isinstance(tags_data, dict):
-                    # 如果是字典格式，合并所有标签
-                    all_tags = []
-                    for key in ['chinese', 'english', 'mixed']:
-                        if key in tags_data:
-                            all_tags.extend(tags_data[key])
-                    tags_for_upload = all_tags[:20]  # YouTube限制最多20个标签
+                    # 首先获取english标签
+                    if 'english' in tags_data and tags_data['english']:
+                        english_tags = tags_data['english']
+                    
+                    # 如果english标签为空或不足，从mixed中过滤英文标签
+                    if len(english_tags) < 10 and 'mixed' in tags_data:
+                        for tag in tags_data['mixed']:
+                            # 判断是否为英文标签（只包含英文字母、数字、空格和常见符号）
+                            if tag and re.match(r'^[a-zA-Z0-9\s\-\'&.,!]+$', tag):
+                                if tag not in english_tags:  # 避免重复
+                                    english_tags.append(tag)
+                                    if len(english_tags) >= 20:  # YouTube限制最多20个标签
+                                        break
+                    
+                    tags_for_upload = english_tags[:20]
                 elif isinstance(tags_data, list):
-                    tags_for_upload = tags_data[:20]
+                    # 如果是列表格式，过滤出英文标签
+                    for tag in tags_data:
+                        if tag and re.match(r'^[a-zA-Z0-9\s\-\'&.,!]+$', tag):
+                            english_tags.append(tag)
+                            if len(english_tags) >= 20:
+                                break
+                    tags_for_upload = english_tags
                 else:
                     tags_for_upload = []
+                
+                logger.debug(f"[标签处理] 原始标签: {tags_data}")
+                logger.debug(f"[标签处理] 英文标签: {tags_for_upload}")
                 
                 # 处理描述 - 从youtube_metadata中获取，但要清理特殊字符
                 description = youtube_metadata.get('description', '')
