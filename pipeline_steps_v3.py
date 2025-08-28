@@ -838,10 +838,11 @@ class SaveFinalOutputStep(PipelineStep):
     def _generate_report(self, context: PipelineContextV3) -> str:
         """生成最终报告"""
         from datetime import datetime
+        from timezone_config import get_beijing_now
         
         return f"""# V3 Pipeline 执行报告
 
-生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+生成时间: {get_beijing_now().strftime('%Y-%m-%d %H:%M:%S')}
 
 ## 基本信息
 - **视频ID**: {context.video_id}

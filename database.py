@@ -5,7 +5,7 @@
 支持SQLite和MySQL，便于后期迁移
 """
 
-from sqlalchemy import create_engine, Column, String, Integer, DateTime, Text, Float, Boolean, Index, ForeignKey
+from sqlalchemy import create_engine, Column, String, Integer, DateTime, Text, Float, Boolean, Index, ForeignKey, event, TypeDecorator
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
 from sqlalchemy.sql import func
@@ -14,10 +14,34 @@ from typing import Optional, List, Dict, Any
 import os
 import json
 import logging
+from timezone_config import get_beijing_now, to_beijing_time
 
 logger = logging.getLogger(__name__)
 
 Base = declarative_base()
+
+# 自定义DateTime类型，自动处理时区
+class BeijingDateTime(TypeDecorator):
+    """自定义DateTime字段，自动处理北京时间"""
+    impl = DateTime
+    cache_ok = True
+    
+    def process_bind_param(self, value, dialect):
+        """存储时转换为UTC（如果需要）"""
+        if value is not None and hasattr(value, 'replace'):
+            # 如果是datetime对象，确保有时区信息
+            if value.tzinfo is None:
+                # 假设输入的是北京时间
+                value = to_beijing_time(value)
+        return value
+    
+    def process_result_value(self, value, dialect):
+        """读取时转换为北京时间"""
+        return to_beijing_time(value) if value is not None else None
+
+def beijing_now():
+    """SQLAlchemy默认值函数，返回北京时间"""
+    return get_beijing_now()
 
 # ============ 数据模型定义 ============
 
@@ -31,9 +55,9 @@ class User(Base):
     api_key = Column(String(100), unique=True, nullable=False, index=True)
     is_active = Column(Boolean, default=True, index=True)
     status = Column(String(20), default='active', nullable=False)  # active/inactive/banned
-    last_login = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, onupdate=func.now(), nullable=True)
+    last_login = Column(BeijingDateTime, nullable=True)
+    created_at = Column(BeijingDateTime, default=beijing_now, nullable=False)
+    updated_at = Column(BeijingDateTime, onupdate=beijing_now, nullable=True)
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -71,9 +95,9 @@ class PipelineTask(Base):
     progress = Column(Text, nullable=True)  # JSON格式的进度详情
     
     # 时间记录
-    created_at = Column(DateTime, default=func.now(), nullable=False, index=True)
-    started_at = Column(DateTime, nullable=True)
-    completed_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(BeijingDateTime, default=beijing_now, nullable=False, index=True)
+    started_at = Column(BeijingDateTime, nullable=True)
+    completed_at = Column(BeijingDateTime, nullable=True, index=True)
     total_duration = Column(Float, nullable=True)  # 总耗时(秒)
     
     # 生成结果
@@ -140,8 +164,8 @@ class Account(Base):
     window_number = Column(String(50), nullable=True)  # 窗口序号
     description = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, index=True)
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, onupdate=func.now(), nullable=True)
+    created_at = Column(BeijingDateTime, default=beijing_now, nullable=False)
+    updated_at = Column(BeijingDateTime, onupdate=beijing_now, nullable=True)
     
     # 关系
     publish_tasks = relationship("PublishTask", back_populates="account")
@@ -179,14 +203,14 @@ class PublishTask(Base):
     thumbnail_path = Column(String(500), nullable=True)
     
     # 发布配置
-    scheduled_time = Column(DateTime, nullable=True)
+    scheduled_time = Column(BeijingDateTime, nullable=True)
     is_scheduled = Column(Boolean, default=False, index=True)
     privacy_status = Column(String(20), default='public')  # public/private/unlisted
     
     # 发布状态
     status = Column(String(20), nullable=False, default='pending', index=True)  # pending/uploading/success/failed
-    upload_started_at = Column(DateTime, nullable=True)
-    upload_completed_at = Column(DateTime, nullable=True)
+    upload_started_at = Column(BeijingDateTime, nullable=True)
+    upload_completed_at = Column(BeijingDateTime, nullable=True)
     
     # YouTube响应
     youtube_video_id = Column(String(50), nullable=True)
@@ -194,8 +218,8 @@ class PublishTask(Base):
     upload_response = Column(Text, nullable=True)  # 完整的上传响应(JSON)
     error_message = Column(Text, nullable=True)
     
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, onupdate=func.now(), nullable=True)
+    created_at = Column(BeijingDateTime, default=beijing_now, nullable=False)
+    updated_at = Column(BeijingDateTime, onupdate=beijing_now, nullable=True)
     
     # 关系
     pipeline_task = relationship("PipelineTask", back_populates="publish_tasks")
@@ -262,6 +286,17 @@ class DatabaseManager:
             pool_pre_ping=True,  # 连接池健康检查
             connect_args={'check_same_thread': False} if 'sqlite' in db_url else {}
         )
+        
+        # 为SQLite设置时区处理
+        if 'sqlite' in db_url:
+            @event.listens_for(self.engine, "connect")
+            def set_sqlite_timezone(dbapi_conn, connection_record):
+                # SQLite不直接支持时区，但我们可以设置本地时间偏移
+                # 注意：SQLite的datetime函数默认使用UTC，我们在应用层处理时区
+                cursor = dbapi_conn.cursor()
+                # 设置SQLite使用本地时间（系统时间）
+                cursor.execute("PRAGMA timezone = '+08:00'")
+                cursor.close()
         
         # 创建表
         Base.metadata.create_all(self.engine)

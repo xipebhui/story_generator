@@ -18,6 +18,7 @@ import json
 import uuid
 import logging
 from datetime import datetime, timedelta
+from timezone_config import get_beijing_now
 from pathlib import Path
 import heapq
 import threading
@@ -135,7 +136,7 @@ class PublishScheduler:
         
         while self.running:
             try:
-                now = datetime.now()
+                now = get_beijing_now()
                 tasks_to_execute = []
                 
                 # 获取需要执行的任务
@@ -305,7 +306,7 @@ async def run_pipeline_async(task_id: str, request: PipelineRequest):
         # 更新数据库状态
         db_manager.update_task(task_id, {
             'status': 'running',
-            'started_at': datetime.now(),
+            'started_at': get_beijing_now(),
             'current_stage': '初始化'
         })
         
@@ -339,7 +340,7 @@ async def run_pipeline_async(task_id: str, request: PipelineRequest):
         
         # 分阶段执行pipeline
         loop = asyncio.get_event_loop()
-        pipeline.start_time = datetime.now()
+        pipeline.start_time = get_beijing_now()
         
         # 阶段1: 故事二创
         db_manager.update_task(task_id, {
@@ -421,13 +422,13 @@ async def run_pipeline_async(task_id: str, request: PipelineRequest):
                     
                     db_manager.update_task(task_id, update_data)
         
-        pipeline.end_time = datetime.now()
+        pipeline.end_time = get_beijing_now()
         total_duration = (pipeline.end_time - pipeline.start_time).total_seconds()
         
         # 收集生成的文件路径
         update_data = {
             'current_stage': None,
-            'completed_at': datetime.now(),
+            'completed_at': get_beijing_now(),
             'total_duration': total_duration,
             'progress': progress
         }
@@ -490,7 +491,7 @@ async def run_pipeline_async(task_id: str, request: PipelineRequest):
         db_manager.update_task(task_id, {
             'status': 'failed',
             'error': str(e),
-            'completed_at': datetime.now(),
+            'completed_at': get_beijing_now(),
             'current_stage': None
         })
 
@@ -544,7 +545,7 @@ async def login(request: LoginRequest):
     
     # 更新最后登录时间
     from datetime import datetime
-    db_manager.update_user(user.id, {'last_login': datetime.now()})
+    db_manager.update_user(user.id, {'last_login': get_beijing_now()})
     
     return AuthResponse(
         username=user.username,
@@ -961,7 +962,7 @@ async def upload_subtitle(
         
         # 更新progress，注意所有值都应该是字符串
         existing_progress['manual_subtitle'] = 'uploaded'  # 使用字符串而不是布尔值
-        existing_progress['subtitle_uploaded_at'] = datetime.now().isoformat()
+        existing_progress['subtitle_uploaded_at'] = get_beijing_now().isoformat()
         
         update_data = {
             'progress': json.dumps(existing_progress)
@@ -1022,7 +1023,7 @@ async def upload_thumbnail(
     
     # 生成唯一文件名
     file_ext = Path(file.filename).suffix
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = get_beijing_now().strftime("%Y%m%d_%H%M%S")
     thumbnail_filename = f"{task_id}_{timestamp}{file_ext}"
     thumbnail_path = thumbnail_dir / thumbnail_filename
     
@@ -1074,7 +1075,7 @@ async def schedule_publish(request: PublishRequest):
         )
         
         if publish_task:
-            if request.scheduled_time and request.scheduled_time > datetime.now():
+            if request.scheduled_time and request.scheduled_time > get_beijing_now():
                 # 定时发布：添加到调度器
                 publish_scheduler.add_task(publish_task['publish_id'], request.scheduled_time)
                 scheduled_tasks.append(publish_task)
@@ -1136,7 +1137,7 @@ async def create_publish_task(request: PublishRequest):
         
         if publish_task:
             # 如果是定时任务，添加到调度器
-            if request.scheduled_time and request.scheduled_time > datetime.now():
+            if request.scheduled_time and request.scheduled_time > get_beijing_now():
                 publish_scheduler.add_task(publish_task['publish_id'], request.scheduled_time)
             results.append(publish_task)
         else:
@@ -1443,7 +1444,7 @@ async def health():
     """健康检查"""
     return {
         "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": get_beijing_now().isoformat(),
         "database": "connected",
         "accounts_loaded": len(account_service.get_all_accounts(active_only=False))
     }

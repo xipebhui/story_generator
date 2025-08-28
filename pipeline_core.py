@@ -13,6 +13,7 @@ import subprocess
 import logging
 from pathlib import Path
 from datetime import datetime
+from timezone_config import get_beijing_now
 from typing import Dict, Any, Optional, List
 import asyncio
 import platform
@@ -133,7 +134,7 @@ class VideoPipeline:
         if not log_file:
             log_dir = Path("logs")
             log_dir.mkdir(exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = get_beijing_now().strftime("%Y%m%d_%H%M%S")
             # 在日志文件名中也包含 account_name
             if request.account_name:
                 self.log_file = log_dir / f"pipeline_{request.creator_id}_{request.account_name}_{request.video_id}_{timestamp}.log"
@@ -166,7 +167,7 @@ class VideoPipeline:
             PipelineResponse: 执行结果
         """
         logger.info("开始执行Pipeline（同步模式）")
-        self.start_time = datetime.now()
+        self.start_time = get_beijing_now()
         response_status = TaskStatus.COMPLETED
         error_message = None
         
@@ -217,7 +218,7 @@ class VideoPipeline:
             error_message = str(e)
             logger.exception("Pipeline执行出错")
         
-        self.end_time = datetime.now()
+        self.end_time = get_beijing_now()
         total_duration = (self.end_time - self.start_time).total_seconds()
         
         # 构建响应
@@ -274,7 +275,7 @@ class VideoPipeline:
         logger.info(f"{'='*60}")
         logger.debug(f"执行命令: {' '.join(command)}")
         
-        start_time = datetime.now()
+        start_time = get_beijing_now()
         result = StageResult(
             name=stage_name,
             status=StageStatus.PROCESSING,
@@ -352,7 +353,7 @@ class VideoPipeline:
             
             logger.debug(f"--- {stage_name} 输出结束 ---")
             
-            end_time = datetime.now()
+            end_time = get_beijing_now()
             duration = (end_time - start_time).total_seconds()
             
             stdout = ''.join(output_lines)
@@ -373,7 +374,7 @@ class VideoPipeline:
         except subprocess.TimeoutExpired:
             result.status = StageStatus.FAILED
             result.error = f"执行超时（{timeout}秒）"
-            result.end_time = datetime.now()
+            result.end_time = get_beijing_now()
             result.duration = (result.end_time - start_time).total_seconds()
             logger.error(f"[TIMEOUT] 阶段 {stage_name} 执行超时 ({timeout}秒)")
             process.kill()
@@ -381,7 +382,7 @@ class VideoPipeline:
         except Exception as e:
             result.status = StageStatus.FAILED
             result.error = str(e)
-            result.end_time = datetime.now()
+            result.end_time = get_beijing_now()
             result.duration = (result.end_time - start_time).total_seconds()
             logger.exception(f"[CRASH] 阶段 {stage_name} 执行出错")
         
@@ -402,8 +403,8 @@ class VideoPipeline:
             result = StageResult(
                 name="故事二创",
                 status=StageStatus.SUCCESS,
-                start_time=datetime.now(),
-                end_time=datetime.now(),
+                start_time=get_beijing_now(),
+                end_time=get_beijing_now(),
                 duration=0,
                 output="使用已存在的故事文件"
             )
@@ -560,8 +561,8 @@ class VideoPipeline:
             result = StageResult(
                 name="语音生成",
                 status=StageStatus.SUCCESS,
-                start_time=datetime.now(),
-                end_time=datetime.now(),
+                start_time=get_beijing_now(),
+                end_time=get_beijing_now(),
                 duration=0,
                 output="使用已存在的音频文件"
             )
@@ -686,7 +687,7 @@ class VideoPipeline:
                         draft_target_dir.mkdir(parents=True, exist_ok=True)
                         
                         # 生成唯一的目标文件夹名 - 包含 account_name
-                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        timestamp = get_beijing_now().strftime("%Y%m%d_%H%M%S")
                         if hasattr(self.request, 'account_name') and self.request.account_name:
                             draft_folder_name = f"{self.request.creator_id}_{self.request.account_name}_{self.request.video_id}_{timestamp}"
                         else:
@@ -744,7 +745,7 @@ class VideoPipeline:
         import shutil
         import subprocess
         
-        start_time = datetime.now()
+        start_time = get_beijing_now()
         stage_result = StageResult(
             name="视频导出",
             start_time=start_time,
@@ -790,7 +791,7 @@ class VideoPipeline:
                     output_dir.mkdir(parents=True, exist_ok=True)
                     
                     # 生成唯一文件名 - 包含 account_name（如果存在）
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    timestamp = get_beijing_now().strftime("%Y%m%d_%H%M%S")
                     if hasattr(self.request, 'account_name') and self.request.account_name:
                         video_filename = f"{self.request.creator_id}_{self.request.account_name}_{self.request.video_id}_{timestamp}.mp4"
                         preview_filename = f"{self.request.creator_id}_{self.request.account_name}_{self.request.video_id}_{timestamp}_preview.mp4"
@@ -878,7 +879,7 @@ class VideoPipeline:
             video_export_semaphore.release()
             logger.info(f"[视频导出] 已释放导出锁")
         
-        end_time = datetime.now()
+        end_time = get_beijing_now()
         stage_result.duration = (end_time - start_time).total_seconds()
         
         return stage_result

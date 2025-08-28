@@ -125,9 +125,7 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     loadTasks();
-    // 改为20秒刷新一次
-    const interval = setInterval(loadTasks, 20000);
-    return () => clearInterval(interval);
+    // 移除自动刷新，改为手动刷新
   }, []);
 
   // 过滤任务
@@ -256,31 +254,50 @@ const Dashboard: React.FC = () => {
                 icon={<ReloadOutlined />}
                 onClick={async () => {
                   try {
+                    console.log('=== 开始重试任务 ===');
+                    console.log('当前任务ID:', task.task_id);
+                    console.log('当前任务列表数量:', tasks.length);
+                    console.log('当前所有任务ID:', tasks.map(t => t.task_id));
+                    
                     message.loading('正在重试任务...');
-                    // 立即更新UI状态为running
-                    setTasks(prevTasks => 
-                      prevTasks.map(t => 
+                    
+                    // 立即更新UI状态为pending
+                    console.log('更新UI状态为pending...');
+                    setTasks(prevTasks => {
+                      console.log('更新前任务列表:', prevTasks.map(t => ({ id: t.task_id, status: t.status })));
+                      const newTasks = prevTasks.map(t => 
                         t.task_id === task.task_id 
                           ? { ...t, status: 'pending' as TaskStatus, progress: 0, error_message: undefined }
                           : t
-                      )
-                    );
+                      );
+                      console.log('更新后任务列表:', newTasks.map(t => ({ id: t.task_id, status: t.status })));
+                      return newTasks;
+                    });
                     
                     // 调用重试接口
+                    console.log('调用pipelineAdapter.retryTask...');
                     const updatedTask = await pipelineAdapter.retryTask(task.task_id);
+                    console.log('重试接口返回的任务:', updatedTask);
                     
                     // 更新本地任务状态
-                    setTasks(prevTasks => 
-                      prevTasks.map(t => 
+                    console.log('更新本地任务状态...');
+                    setTasks(prevTasks => {
+                      console.log('重试后更新前任务列表:', prevTasks.map(t => ({ id: t.task_id, status: t.status })));
+                      const newTasks = prevTasks.map(t => 
                         t.task_id === task.task_id ? updatedTask : t
-                      )
-                    );
+                      );
+                      console.log('重试后更新后任务列表:', newTasks.map(t => ({ id: t.task_id, status: t.status })));
+                      console.log('任务列表是否有重复:', newTasks.length !== new Set(newTasks.map(t => t.task_id)).size);
+                      return newTasks;
+                    });
                     
                     message.success('任务重试成功');
+                    console.log('=== 重试任务完成 ===');
                   } catch (error) {
                     message.error('重试任务失败');
                     console.error('重试任务失败:', error);
                     // 失败时恢复原状态
+                    console.log('重试失败，重新加载任务列表...');
                     loadTasks();
                   }
                 }}
@@ -469,7 +486,7 @@ const Dashboard: React.FC = () => {
                         style={{ width: 200 }}
                       />
                       <Button icon={<FilterOutlined />}>筛选</Button>
-                      <Tooltip title="手动刷新 (每20秒自动刷新)">
+                      <Tooltip title="手动刷新">
                         <Button 
                           icon={<ReloadOutlined />}
                           onClick={() => loadTasks(true)}
@@ -542,13 +559,6 @@ const Dashboard: React.FC = () => {
             }
           ]}
         />
-        
-        {/* 自动刷新指示器 */}
-        <div className="auto-refresh-indicator">
-          <SyncOutlined />
-          <span>上次刷新: {dayjs(lastRefreshTime).format('HH:mm:ss')}</span>
-          <span style={{ color: '#595959' }}>· 每20秒自动刷新</span>
-        </div>
       </div>
 
       {/* 弹窗组件 */}

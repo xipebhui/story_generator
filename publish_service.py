@@ -13,6 +13,7 @@ import asyncio
 import aiohttp
 import re
 from datetime import datetime
+from timezone_config import get_beijing_now
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 
@@ -162,7 +163,7 @@ class PublishService:
                 # 更新状态为上传中
                 self.db.update_publish_task(publish_id, {
                     'status': 'uploading',
-                    'upload_started_at': datetime.now()
+                    'upload_started_at': get_beijing_now()
                 })
                 
                 # 处理标签 - 只使用英文标签
@@ -295,7 +296,7 @@ class PublishService:
                                         'youtube_video_id': video_id,
                                         'youtube_video_url': youtube_url,
                                         'upload_response': response_data,
-                                        'upload_completed_at': datetime.now()
+                                        'upload_completed_at': get_beijing_now()
                                     })
                                     logger.info(f"视频上传成功: {youtube_url}")
                                     return {
@@ -311,7 +312,7 @@ class PublishService:
                                         'status': 'failed',
                                         'error_message': error_msg,
                                         'upload_response': response_data,
-                                        'upload_completed_at': datetime.now()
+                                        'upload_completed_at': get_beijing_now()
                                     })
                                     logger.error(f"视频上传失败: {error_msg}")
                                     return {'success': False, 'error': error_msg}
@@ -322,7 +323,7 @@ class PublishService:
                                     'status': 'failed',
                                     'error_message': error_msg,
                                     'upload_response': response_data,
-                                    'upload_completed_at': datetime.now()
+                                    'upload_completed_at': get_beijing_now()
                                 })
                                 return {'success': False, 'error': error_msg}
                         else:
@@ -332,7 +333,7 @@ class PublishService:
                                 'status': 'failed',
                                 'error_message': error_msg,
                                 'upload_response': response_data if 'response_data' in locals() else None,
-                                'upload_completed_at': datetime.now()
+                                'upload_completed_at': get_beijing_now()
                             })
                             return {'success': False, 'error': error_msg}
                             
@@ -341,7 +342,7 @@ class PublishService:
             self.db.update_publish_task(publish_id, {
                 'status': 'failed',
                 'error_message': error_msg,
-                'upload_completed_at': datetime.now()
+                'upload_completed_at': get_beijing_now()
             })
             logger.error(f"上传超时: {publish_id}")
             return {'success': False, 'error': error_msg}
@@ -351,7 +352,7 @@ class PublishService:
             self.db.update_publish_task(publish_id, {
                 'status': 'failed',
                 'error_message': error_msg,
-                'upload_completed_at': datetime.now()
+                'upload_completed_at': get_beijing_now()
             })
             logger.error(f"上传失败: {e}")
             logger.exception("详细错误:")

@@ -98,9 +98,7 @@ const PublishStatus: React.FC<PublishStatusProps> = ({
   useEffect(() => {
     if (visible) {
       loadPublishTasks();
-      // 每5秒刷新一次状态
-      const interval = setInterval(loadPublishTasks, 5000);
-      return () => clearInterval(interval);
+      // 移除自动刷新，改为手动刷新
     }
   }, [taskId, visible]);
 
