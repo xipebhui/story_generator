@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Drawer,
   Descriptions,
@@ -16,7 +16,8 @@ import {
   message,
   Empty,
   Badge,
-  Upload
+  Upload,
+  Popconfirm
 } from 'antd';
 import {
   CopyOutlined,
@@ -32,19 +33,21 @@ import {
   TagsOutlined,
   PictureOutlined,
   CloudUploadOutlined,
-  GlobalOutlined,
-  TranslationOutlined,
-  UploadOutlined
+  UploadOutlined,
+  ReloadOutlined,
+  DeleteOutlined,
+  CloseOutlined
 } from '@ant-design/icons';
-import { Task, TaskResult } from '../../types/task';
+import { Task, TaskResult, PublishedAccount } from '../../types/task';
 import { pipelineService } from '../../services/pipeline';
 import { backendAccountService } from '../../services/backend';
+import PublishStatusBadge from '../PublishStatusBadge';
 import dayjs from 'dayjs';
 import duration from 'dayjs/plugin/duration';
 
 dayjs.extend(duration);
 
-const { Title, Text, Paragraph } = Typography;
+const { Text, Paragraph } = Typography;
 const { TabPane } = Tabs;
 
 interface TaskDetailDrawerProps {
@@ -52,19 +55,24 @@ interface TaskDetailDrawerProps {
   task: Task | null;
   onClose: () => void;
   onPublish?: (task: Task) => void;
+  onTaskRefresh?: () => void;  // 添加刷新回调
 }
 
 const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
   visible,
   task,
   onClose,
-  onPublish
+  onPublish,
+  onTaskRefresh
 }) => {
   const [result, setResult] = useState<TaskResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [showChineseTitles, setShowChineseTitles] = useState(false);
   const [showChineseDesc, setShowChineseDesc] = useState(false);
   const [errorExpanded, setErrorExpanded] = useState(false);  // 控制错误信息展开/折叠
+  const [retryLoading, setRetryLoading] = useState<{ [key: string]: boolean }>({});
+  const [deleteLoading, setDeleteLoading] = useState<{ [key: string]: boolean }>({});
+  const [cancelLoading, setCancelLoading] = useState<{ [key: string]: boolean }>({});
 
   // 加载任务结果
   useEffect(() => {
@@ -91,6 +99,154 @@ const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     message.success(`${label}已复制到剪贴板`);
+  };
+
+  // 重试发布任务
+  const handleRetry = async (publishId: string) => {
+    if (!publishId) {
+      message.error('发布任务ID不存在');
+      return;
+    }
+    
+    setRetryLoading({ ...retryLoading, [publishId]: true });
+    try {
+      await backendAccountService.retryPublishTask(publishId);
+      message.success('重试任务已启动');
+      // 刷新任务数据
+      if (onTaskRefresh) {
+        onTaskRefresh();
+      }
+    } catch (error: any) {
+      message.error(error.message || '重试失败');
+    } finally {
+      setRetryLoading({ ...retryLoading, [publishId]: false });
+    }
+  };
+
+  // 取消运行中的发布任务
+  const handleCancel = async (publishId: string) => {
+    if (!publishId) {
+      message.error('发布任务ID不存在');
+      return;
+    }
+    
+    setCancelLoading({ ...cancelLoading, [publishId]: true });
+    try {
+      await backendAccountService.cancelPublishTask(publishId);
+      message.success('发布任务已取消');
+      
+      // 更新本地任务数据
+      if (task && task.published_accounts) {
+        const canceledAccount = task.published_accounts.find(
+          account => account.publish_id === publishId
+        );
+        if (canceledAccount) {
+          canceledAccount.status = 'cancelled';
+          canceledAccount.error_message = '任务已取消';
+        }
+      }
+      
+      // 刷新任务数据
+      if (onTaskRefresh) {
+        onTaskRefresh();
+      }
+    } catch (error: any) {
+      message.error(error.message || '取消失败');
+    } finally {
+      setCancelLoading({ ...cancelLoading, [publishId]: false });
+    }
+  };
+
+  // 删除发布任务
+  const handleDelete = async (publishId: string) => {
+    if (!publishId) {
+      message.error('发布任务ID不存在');
+      return;
+    }
+    
+    setDeleteLoading({ ...deleteLoading, [publishId]: true });
+    try {
+      await backendAccountService.deletePublishTask(publishId);
+      message.success('发布任务已删除');
+      
+      // 更新本地任务数据，移除已删除的发布记录
+      if (task && task.published_accounts) {
+        task.published_accounts = task.published_accounts.filter(
+          account => account.publish_id !== publishId
+        );
+        
+        // 更新发布状态统计
+        if (task.publish_status) {
+          task.publish_status.total = Math.max(0, task.publish_status.total - 1);
+          // 根据被删除账号的状态更新相应计数
+          const deletedAccount = task.published_accounts.find(a => a.publish_id === publishId);
+          if (deletedAccount) {
+            if (deletedAccount.status === 'success') {
+              task.publish_status.success = Math.max(0, task.publish_status.success - 1);
+            } else if (deletedAccount.status === 'failed') {
+              task.publish_status.failed = Math.max(0, task.publish_status.failed - 1);
+            } else if (deletedAccount.status === 'pending') {
+              task.publish_status.pending = Math.max(0, task.publish_status.pending - 1);
+            }
+          }
+        }
+      }
+      
+      // 刷新任务数据
+      if (onTaskRefresh) {
+        onTaskRefresh();
+      }
+    } catch (error: any) {
+      message.error(error.message || '删除失败');
+    } finally {
+      setDeleteLoading({ ...deleteLoading, [publishId]: false });
+    }
+  };
+
+  // 重试发布任务
+  const handleRetryPublish = async (publishId: string, accountName: string) => {
+    if (!publishId) {
+      message.error('缺少发布ID，无法重试');
+      return;
+    }
+
+    setRetryLoading(prev => ({ ...prev, [publishId]: true }));
+    try {
+      await backendAccountService.retryPublishTask(publishId);
+      message.success(`重试发布任务成功: ${accountName}`);
+      
+      // 刷新任务数据
+      if (onTaskRefresh) {
+        onTaskRefresh();
+      }
+    } catch (error: any) {
+      message.error(`重试发布失败: ${error.message || '未知错误'}`);
+    } finally {
+      setRetryLoading(prev => ({ ...prev, [publishId]: false }));
+    }
+  };
+
+  // 删除发布任务
+  const handleDeletePublish = async (publishId: string, accountName: string) => {
+    if (!publishId) {
+      message.error('缺少发布ID，无法删除');
+      return;
+    }
+
+    setDeleteLoading(prev => ({ ...prev, [publishId]: true }));
+    try {
+      await backendAccountService.deletePublishTask(publishId);
+      message.success(`删除发布记录成功: ${accountName}`);
+      
+      // 刷新任务数据
+      if (onTaskRefresh) {
+        onTaskRefresh();
+      }
+    } catch (error: any) {
+      message.error(`删除发布记录失败: ${error.message || '未知错误'}`);
+    } finally {
+      setDeleteLoading(prev => ({ ...prev, [publishId]: false }));
+    }
   };
 
   // 获取状态图标
@@ -668,6 +824,213 @@ const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
               showIcon
             />
           )}
+        </TabPane>
+
+        <TabPane tab="发布状态" key="publish">
+          <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            {/* 发布状态统计 */}
+            <Card title="发布概览" size="small">
+              <div style={{ marginBottom: 16 }}>
+                <PublishStatusBadge
+                  publishSummary={task.publish_summary}
+                  publishStatus={task.publish_status}
+                  publishedAccounts={task.published_accounts}
+                  showDetail={false}
+                />
+              </div>
+              
+              {task.publish_status && (
+                <Descriptions column={2} bordered size="small">
+                  <Descriptions.Item label="总计划发布">
+                    <Badge count={task.publish_status.total} showZero style={{ backgroundColor: '#1890ff' }} />
+                  </Descriptions.Item>
+                  <Descriptions.Item label="发布成功">
+                    <Badge count={task.publish_status.success} showZero style={{ backgroundColor: '#52c41a' }} />
+                  </Descriptions.Item>
+                  <Descriptions.Item label="待发布">
+                    <Badge count={task.publish_status.pending} showZero style={{ backgroundColor: '#faad14' }} />
+                  </Descriptions.Item>
+                  <Descriptions.Item label="上传中">
+                    <Badge count={task.publish_status.uploading} showZero style={{ backgroundColor: '#1890ff' }} />
+                  </Descriptions.Item>
+                  <Descriptions.Item label="发布失败">
+                    <Badge count={task.publish_status.failed} showZero style={{ backgroundColor: '#ff4d4f' }} />
+                  </Descriptions.Item>
+                </Descriptions>
+              )}
+            </Card>
+
+            {/* 发布账号详情 */}
+            <Card title="发布账号详情" size="small">
+              {task.published_accounts && task.published_accounts.length > 0 ? (
+                <Timeline>
+                  {task.published_accounts.map((account: PublishedAccount, index) => {
+                    const statusConfig = {
+                      success: {
+                        color: 'green',
+                        icon: <CheckCircleOutlined />,
+                        text: '发布成功'
+                      },
+                      pending: {
+                        color: 'orange',
+                        icon: <ClockCircleOutlined />,
+                        text: '待发布'
+                      },
+                      uploading: {
+                        color: 'blue',
+                        icon: <SyncOutlined spin />,
+                        text: '上传中'
+                      },
+                      failed: {
+                        color: 'red',
+                        icon: <CloseCircleOutlined />,
+                        text: '发布失败'
+                      }
+                    };
+
+                    const config = statusConfig[account.status as keyof typeof statusConfig] || statusConfig.pending;
+
+                    return (
+                      <Timeline.Item
+                        key={index}
+                        color={config.color}
+                        dot={config.icon}
+                      >
+                        <Space direction="vertical" size={4}>
+                          <Space>
+                            <Text strong>{account.account_name}</Text>
+                            <Tag color={config.color === 'orange' ? 'warning' : config.color}>
+                              {config.text}
+                            </Tag>
+                            
+                            {/* 取消、重试和删除按钮 */}
+                            <Space size={4}>
+                              {/* 取消按钮 - 运行中和待发布的任务可以取消 */}
+                              {(account.status === 'uploading' || account.status === 'publishing' || account.status === 'pending') && account.publish_id && (
+                                <Tooltip title="取消发布">
+                                  <Button
+                                    type="text"
+                                    size="small"
+                                    icon={<CloseOutlined />}
+                                    loading={cancelLoading[account.publish_id]}
+                                    onClick={() => handleCancel(account.publish_id!)}
+                                    style={{ color: '#ff4d4f' }}
+                                  />
+                                </Tooltip>
+                              )}
+                              
+                              {/* 重试按钮 - 仅对失败/取消的任务显示 */}
+                              {(account.status === 'failed' || account.status === 'cancelled') && account.publish_id && (
+                                <Tooltip title="重试发布">
+                                  <Button
+                                    type="text"
+                                    size="small"
+                                    icon={<ReloadOutlined />}
+                                    loading={retryLoading[account.publish_id]}
+                                    onClick={() => handleRetry(account.publish_id!)}
+                                    style={{ color: '#52c41a' }}
+                                  />
+                                </Tooltip>
+                              )}
+                              
+                              {/* 删除按钮 - 所有发布记录都可以删除 */}
+                              {account.publish_id && (
+                                <Popconfirm
+                                  title="删除发布记录"
+                                  description={`确定要删除账号 "${account.account_name}" 的发布记录吗？`}
+                                  onConfirm={() => handleDelete(account.publish_id!)}
+                                  okText="删除"
+                                  cancelText="取消"
+                                  okType="danger"
+                                >
+                                  <Tooltip title="删除发布记录">
+                                    <Button
+                                      type="text"
+                                      size="small"
+                                      icon={<DeleteOutlined />}
+                                      loading={deleteLoading[account.publish_id]}
+                                      style={{ color: '#ff4d4f' }}
+                                    />
+                                  </Tooltip>
+                                </Popconfirm>
+                              )}
+                            </Space>
+                          </Space>
+                          
+                          {account.youtube_video_url && (
+                            <Space>
+                              <YoutubeOutlined style={{ color: '#ff0000' }} />
+                              <a href={account.youtube_video_url} target="_blank" rel="noopener noreferrer">
+                                {account.youtube_video_url}
+                              </a>
+                              <Button
+                                type="text"
+                                size="small"
+                                icon={<CopyOutlined />}
+                                onClick={() => copyToClipboard(account.youtube_video_url!, 'YouTube链接')}
+                              />
+                            </Space>
+                          )}
+                          
+                          {account.published_at && (
+                            <Text type="secondary">
+                              发布时间: {dayjs(account.published_at).format('YYYY-MM-DD HH:mm:ss')}
+                            </Text>
+                          )}
+                          
+                          {account.error_message && (
+                            <Alert
+                              message="错误信息"
+                              description={account.error_message}
+                              type="error"
+                              showIcon
+                              style={{ marginTop: 8 }}
+                            />
+                          )}
+                        </Space>
+                      </Timeline.Item>
+                    );
+                  })}
+                </Timeline>
+              ) : (
+                <Empty 
+                  description={
+                    <Space direction="vertical">
+                      <Text>暂未发布到任何账号</Text>
+                      {task.status === 'completed' && onPublish && (
+                        <Button
+                          type="primary"
+                          icon={<CloudUploadOutlined />}
+                          onClick={() => onPublish(task)}
+                        >
+                          立即发布
+                        </Button>
+                      )}
+                    </Space>
+                  }
+                />
+              )}
+            </Card>
+
+            {/* 发布提示 */}
+            {task.status === 'completed' && (!task.publish_status || task.publish_status.total === 0) && (
+              <Alert
+                message="提示"
+                description="任务已完成，您可以点击上方的'发布到YouTube'按钮将视频发布到指定账号。"
+                type="info"
+                showIcon
+              />
+            )}
+
+            {task.publish_status && task.publish_status.failed > 0 && (
+              <Alert
+                message="发布失败提示"
+                description={`有 ${task.publish_status.failed} 个账号发布失败，请检查失败原因并重试。失败的发布任务也会被统计在发布状态中。`}
+                type="warning"
+                showIcon
+              />
+            )}
+          </Space>
         </TabPane>
       </Tabs>
     </Drawer>

@@ -205,97 +205,42 @@ export const workflows: WorkflowConfig[] = [
     tags: ['漫画创作', '视觉艺术', '创意视频']
   },
   {
-    key: 'youtube-relief',
-    name: 'YouTube解压',
-    description: '创作令人放松的解压视频，带来视觉和听觉的双重享受',
+    key: 'video-merge',
+    name: '视频拼接',
+    description: '将竖屏和横屏视频智能拼接，创建专业的剪映草稿',
     icon: <PlayCircleOutlined />,
     color: '#52C41A',
     gradient: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
     fields: [
       {
-        name: 'video_id',
-        label: 'YouTube视频ID',
-        type: 'text',
+        name: 'portrait_folder',
+        label: '竖屏视频文件夹',
+        type: 'folder',
         required: true,
-        placeholder: '请输入11位YouTube视频ID',
-        tooltip: '例如：dQw4w9WgXcQ',
-        icon: <YoutubeOutlined />
+        placeholder: '选择包含竖屏视频的文件夹',
+        tooltip: '包含9:16竖屏视频的文件夹路径',
+        icon: <FolderOutlined />
       },
       {
-        name: 'creator_id',
-        label: '创作者ID',
-        type: 'text',
+        name: 'landscape_folder',
+        label: '横屏视频文件夹',
+        type: 'folder',
         required: true,
-        placeholder: '请输入创作者标识',
+        placeholder: '选择包含横屏视频的文件夹',
+        tooltip: '包含16:9横屏视频的文件夹路径',
+        icon: <FolderOutlined />
+      },
+      {
+        name: 'custom_id',
+        label: '自定义ID',
+        type: 'text',
+        required: false,
+        placeholder: '输入自定义任务ID（可选）',
+        tooltip: '用于标识任务的自定义ID',
         icon: <UserOutlined />
-      },
-      {
-        name: 'relief_type',
-        label: '解压类型',
-        type: 'select',
-        required: true,
-        defaultValue: 'visual',
-        options: [
-          { label: '视觉解压', value: 'visual' },
-          { label: 'ASMR音频', value: 'asmr' },
-          { label: '慢动作', value: 'slowmo' },
-          { label: '重复循环', value: 'loop' },
-          { label: '混合解压', value: 'mixed' }
-        ]
-      },
-      {
-        name: 'effect_intensity',
-        label: '效果强度',
-        type: 'select',
-        required: true,
-        defaultValue: 'medium',
-        options: [
-          { label: '轻柔', value: 'light' },
-          { label: '适中', value: 'medium' },
-          { label: '强烈', value: 'intense' }
-        ]
-      },
-      {
-        name: 'duration',
-        label: '视频时长(秒)',
-        type: 'number',
-        required: true,
-        defaultValue: 120,
-        min: 60,
-        max: 600,
-        icon: <FieldTimeOutlined />
-      },
-      {
-        name: 'background_music',
-        label: '背景音乐',
-        type: 'select',
-        defaultValue: 'ambient',
-        options: [
-          { label: '环境音乐', value: 'ambient' },
-          { label: '自然声音', value: 'nature' },
-          { label: '白噪音', value: 'white-noise' },
-          { label: '无音乐', value: 'none' },
-          { label: '原声保留', value: 'original' }
-        ]
-      },
-      {
-        name: 'loop_count',
-        label: '循环次数',
-        type: 'number',
-        defaultValue: 3,
-        min: 1,
-        max: 10,
-        tooltip: '关键片段的循环播放次数'
-      },
-      {
-        name: 'add_transitions',
-        label: '平滑过渡',
-        type: 'switch',
-        defaultValue: true,
-        tooltip: '在片段之间添加平滑过渡效果'
       }
     ],
-    tags: ['解压视频', '放松治愈', 'ASMR']
+    tags: ['视频拼接', '剪映草稿', '创意混剪']
   }
 ];
 

@@ -76,6 +76,11 @@ export interface TaskStatus {
   start_time?: string;
   end_time?: string;
   error_message?: string;
+  created_at?: string;
+  completed_at?: string;
+  total_duration?: number;
+  duration?: number;
+  error?: string;
   stages?: {
     [key: string]: {
       status: string;
@@ -83,6 +88,23 @@ export interface TaskStatus {
       end_time?: string;
     };
   };
+  // 添加发布状态信息
+  publish_summary?: string;
+  publish_status?: {
+    total: number;
+    success: number;
+    pending: number;
+    uploading: number;
+    failed: number;
+  };
+  published_accounts?: Array<{
+    account_id: string;
+    account_name: string;
+    status: string;
+    youtube_video_url?: string;
+    published_at?: string;
+    error_message?: string;
+  }>;
   // 添加完成后的结果数据
   result?: {
     video_path?: string;
@@ -232,7 +254,7 @@ class BackendPipelineService {
     return apiRequest<TaskStatus>(`/pipeline/status/${taskId}`);
   }
 
-  // 获取任务历史
+  // 获取任务历史（使用新的tasks接口，包含发布状态）
   async getTaskHistory(params?: TaskHistoryParams): Promise<TaskHistoryResponse> {
     const queryParams = new URLSearchParams();
     if (params?.page) queryParams.append('page', params.page.toString());
@@ -240,8 +262,16 @@ class BackendPipelineService {
     if (params?.status) queryParams.append('status', params.status);
     if (params?.creator_id) queryParams.append('creator_id', params.creator_id);
 
-    const url = `/pipeline/history${queryParams.toString() ? `?${queryParams}` : ''}`;
-    return apiRequest<TaskHistoryResponse>(url);
+    // 优先使用新的tasks接口（包含发布状态）
+    const url = `/pipeline/tasks${queryParams.toString() ? `?${queryParams}` : ''}`;
+    try {
+      return await apiRequest<TaskHistoryResponse>(url);
+    } catch (error) {
+      // 如果新接口失败，回退到旧接口
+      console.warn('新的tasks接口失败，回退到history接口:', error);
+      const fallbackUrl = `/pipeline/history${queryParams.toString() ? `?${queryParams}` : ''}`;
+      return apiRequest<TaskHistoryResponse>(fallbackUrl);
+    }
   }
 
   // 轮询任务状态
@@ -265,7 +295,7 @@ class BackendPipelineService {
         errorCount = 0;
         
         // 如果任务还在运行，继续轮询 - 直接检查后端返回的实际状态
-        if (status.status === 'pending' || status.status === 'running' || status.status === 'processing') {
+        if (status.status === 'pending' || status.status === 'processing') {
           setTimeout(poll, interval);
         }
       } catch (error: any) {
@@ -280,14 +310,12 @@ class BackendPipelineService {
                       error?.message?.includes('Not Found');
                       
         if (is404) {
-          console.log(`任务 ${taskId} 不存在（404），停止轮询`);
           stopped = true;
           return;
         }
         
         // 如果错误次数超过最大值，停止轮询
         if (errorCount >= maxErrors) {
-          console.log(`任务 ${taskId} 轮询失败次数过多，停止轮询`);
           stopped = true;
           return;
         }
@@ -467,12 +495,12 @@ class BackendAccountService {
       // 返回发布任务列表 - 后端返回的格式是 { total: number, publish_tasks: [] }
       if (Array.isArray(response)) {
         return response;
-      } else if (response && response.publish_tasks) {
-        return response.publish_tasks;  // 实际的数据在 publish_tasks 字段中
-      } else if (response && response.history) {
-        return response.history;
-      } else if (response && response.items) {
-        return response.items;
+      } else if (response && (response as any).publish_tasks) {
+        return (response as any).publish_tasks;  // 实际的数据在 publish_tasks 字段中
+      } else if (response && (response as any).history) {
+        return (response as any).history;
+      } else if (response && (response as any).items) {
+        return (response as any).items;
       } else if (response && typeof response === 'object') {
         // 如果返回的是单个对象，包装成数组
         return [response];
@@ -482,6 +510,27 @@ class BackendAccountService {
       console.error('获取发布历史失败:', error);
       return [];
     }
+  }
+
+  // 重试发布任务
+  async retryPublishTask(publishId: string): Promise<{ message: string; publish_id: string }> {
+    return apiRequest<{ message: string; publish_id: string }>(`/publish/retry/${publishId}`, {
+      method: 'POST'
+    });
+  }
+
+  // 删除发布任务
+  async deletePublishTask(publishId: string): Promise<{ message: string; publish_id: string }> {
+    return apiRequest<{ message: string; publish_id: string }>(`/publish/task/${publishId}`, {
+      method: 'DELETE'
+    });
+  }
+
+  // 取消发布任务（用于运行中的任务）
+  async cancelPublishTask(publishId: string): Promise<{ message: string; publish_id: string }> {
+    return apiRequest<{ message: string; publish_id: string }>(`/publish/scheduler/${publishId}`, {
+      method: 'DELETE'
+    });
   }
 }
 

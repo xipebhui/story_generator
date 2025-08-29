@@ -417,6 +417,28 @@ class DatabaseManager:
             
             return query.all()
     
+    def get_tasks_count(
+        self,
+        creator_id: Optional[str] = None,
+        status: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> int:
+        """获取任务总数"""
+        with self.get_session() as session:
+            query = session.query(PipelineTask)
+            
+            if creator_id:
+                query = query.filter(PipelineTask.creator_id == creator_id)
+            if status:
+                query = query.filter(PipelineTask.status == status)
+            if start_date:
+                query = query.filter(PipelineTask.created_at >= start_date)
+            if end_date:
+                query = query.filter(PipelineTask.created_at <= end_date)
+            
+            return query.count()
+    
     # ============ 账号管理 ============
     
     def create_account(self, account_data: Dict[str, Any]) -> Account:
@@ -432,6 +454,10 @@ class DatabaseManager:
         """获取账号"""
         with self.get_session() as session:
             return session.query(Account).filter_by(account_id=account_id).first()
+    
+    def get_account_by_id(self, account_id: str) -> Optional[Account]:
+        """根据account_id获取账号（兼容性别名）"""
+        return self.get_account(account_id)
     
     def get_active_accounts(self) -> List[Account]:
         """获取所有活跃账号"""
@@ -530,6 +556,31 @@ class DatabaseManager:
                 .filter_by(status='pending')\
                 .limit(limit)\
                 .all()
+    
+    def get_publish_task(self, publish_id: str) -> Optional[PublishTask]:
+        """获取单个发布任务"""
+        with self.get_session() as session:
+            return session.query(PublishTask).filter_by(publish_id=publish_id).first()
+    
+    def delete_publish_task(self, publish_id: str) -> bool:
+        """
+        删除发布任务记录
+        
+        Args:
+            publish_id: 发布任务ID
+        
+        Returns:
+            删除成功返回True，任务不存在返回False
+        """
+        with self.get_session() as session:
+            publish_task = session.query(PublishTask).filter_by(publish_id=publish_id).first()
+            if not publish_task:
+                return False
+            
+            session.delete(publish_task)
+            session.commit()
+            logger.info(f"发布任务 {publish_id} 已删除")
+            return True
     
     # ============ 用户管理 ============
     

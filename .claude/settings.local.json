@@ -21,7 +21,11 @@
       "Bash(git commit:*)",
       "Bash(git push:*)",
       "Bash(lsof:*)",
-      "Bash(kill:*)"
+      "Bash(kill:*)",
+      "WebSearch",
+      "Bash(ffprobe:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "additionalDirectories": [

@@ -9,6 +9,9 @@ import os
 import sys
 import platform
 
+# 添加父目录到Python路径
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
@@ -560,6 +563,118 @@ async def get_result(task_id: str):
         publish_tasks=[pt.to_dict() for pt in publish_tasks]
     )
 
+def get_task_publish_status(task_id: str) -> dict:
+    """获取任务的发布状态统计"""
+    publish_tasks = db_manager.get_publish_tasks_by_task(task_id)
+    
+    status_count = {
+        'total': len(publish_tasks),
+        'success': 0,
+        'pending': 0,
+        'uploading': 0,
+        'failed': 0
+    }
+    
+    published_accounts = []
+    
+    for pt in publish_tasks:
+        # 统计各状态数量
+        if pt.status == 'success':
+            status_count['success'] += 1
+        elif pt.status == 'pending':
+            status_count['pending'] += 1
+        elif pt.status == 'uploading':
+            status_count['uploading'] += 1
+        elif pt.status == 'failed':
+            status_count['failed'] += 1
+        
+        # 获取账号信息
+        account = account_service.get_account_by_id(pt.account_id)
+        published_accounts.append({
+            'publish_id': pt.publish_id,  # 添加publish_id
+            'account_id': pt.account_id,
+            'account_name': account['account_name'] if account else pt.account_id,
+            'status': pt.status,
+            'youtube_video_url': pt.youtube_video_url,
+            'published_at': pt.upload_completed_at.isoformat() if pt.upload_completed_at else None,
+            'error_message': pt.error_message
+        })
+    
+    return {
+        'publish_status': status_count,
+        'published_accounts': published_accounts
+    }
+
+# ============ 认证相关 API ============
+@app.post("/api/auth/login")
+async def login(credentials: dict):
+    """登录接口"""
+    username = credentials.get('username')
+    password = credentials.get('password')
+    
+    # 简单的模拟登录验证
+    # 实际应该验证数据库中的用户信息
+    if username and password:
+        return {
+            "username": username,
+            "api_key": f"sk_{username}_mock_key",
+            "message": "登录成功"
+        }
+    
+    raise HTTPException(status_code=401, detail="用户名或密码错误")
+
+@app.post("/api/auth/register")
+async def register(user_data: dict):
+    """注册接口"""
+    username = user_data.get('username')
+    password = user_data.get('password')
+    invite_code = user_data.get('invite_code')  # 修正字段名
+    
+    # 验证邀请码
+    if invite_code != "15361578057":
+        raise HTTPException(status_code=400, detail="邀请码无效")
+    
+    # 简单的模拟注册
+    if username and password:
+        return {
+            "username": username,
+            "api_key": f"sk_{username}_mock_key",
+            "message": "注册成功"
+        }
+    
+    raise HTTPException(status_code=400, detail="注册信息不完整")
+
+@app.get("/api/pipeline/tasks")
+async def get_tasks(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100)
+):
+    """获取任务列表（使用history接口的数据）"""
+    # 计算分页
+    offset = (page - 1) * page_size
+    
+    # 查询数据库
+    tasks = db_manager.get_tasks_history(
+        limit=page_size,
+        offset=offset
+    )
+    
+    # 为每个任务添加发布状态
+    tasks_with_publish = []
+    for task in tasks:
+        task_dict = task.to_dict()
+        # 添加发布状态信息
+        publish_info = get_task_publish_status(task.task_id)
+        task_dict.update(publish_info)
+        tasks_with_publish.append(task_dict)
+    
+    return {
+        "total": len(tasks_with_publish),
+        "page": page,
+        "page_size": page_size,
+        "tasks": tasks_with_publish
+    }
+
 @app.get("/api/pipeline/history")
 async def get_history(
     creator_id: Optional[str] = Query(None),
@@ -590,11 +705,20 @@ async def get_history(
     # 获取总数（简化处理，实际应该单独查询）
     total = len(tasks)  # 这里简化了，实际应该查询总数
     
+    # 为每个任务添加发布状态
+    tasks_with_publish = []
+    for task in tasks:
+        task_dict = task.to_dict()
+        # 添加发布状态信息
+        publish_info = get_task_publish_status(task.task_id)
+        task_dict.update(publish_info)
+        tasks_with_publish.append(task_dict)
+    
     return {
         "total": total,
         "page": page,
         "page_size": page_size,
-        "tasks": [task.to_dict() for task in tasks]
+        "tasks": tasks_with_publish
     }
 
 @app.get("/api/pipeline/statistics")
@@ -862,10 +986,52 @@ async def get_publish_history(
 @app.post("/api/publish/retry/{publish_id}")
 async def retry_publish(publish_id: str, background_tasks: BackgroundTasks):
     """重试失败的发布"""
+    # 首先检查发布任务是否存在
+    publish_task = db_manager.get_publish_task(publish_id)
+    if not publish_task:
+        raise HTTPException(status_code=404, detail="发布任务不存在")
+    
+    # 检查任务状态是否允许重试（只允许失败或取消的任务重试）
+    if publish_task.status not in ['failed', 'cancelled']:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"任务状态不允许重试，当前状态: {publish_task.status}"
+        )
+    
     background_tasks.add_task(publish_service.retry_failed_publish, publish_id)
     
     return {
         "message": "重试任务已启动",
+        "publish_id": publish_id
+    }
+
+@app.delete("/api/publish/task/{publish_id}")
+async def delete_publish_task(publish_id: str):
+    """删除发布任务记录"""
+    # 检查发布任务是否存在
+    publish_task = db_manager.get_publish_task(publish_id)
+    if not publish_task:
+        raise HTTPException(status_code=404, detail="发布任务不存在")
+    
+    # 检查任务状态，如果正在上传则不允许删除
+    if publish_task.status == 'uploading':
+        raise HTTPException(
+            status_code=400, 
+            detail="正在上传的任务不能删除，请等待上传完成或失败后再删除"
+        )
+    
+    # 如果是定时任务且还未执行，从调度器中移除
+    if publish_task.is_scheduled and publish_task.status == 'pending':
+        publish_scheduler.remove_task(publish_id)
+        logger.info(f"已从定时发布调度器中移除任务: {publish_id}")
+    
+    # 删除数据库记录
+    success = db_manager.delete_publish_task(publish_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="删除发布任务失败")
+    
+    return {
+        "message": "发布任务已删除",
         "publish_id": publish_id
     }
 
@@ -980,6 +1146,7 @@ async def root():
                 "batch": "/api/publish/batch",
                 "history": "/api/publish/history",
                 "retry": "/api/publish/retry/{publish_id}",
+                "delete_task": "/api/publish/task/{publish_id}",
                 "scheduler_queue": "/api/publish/scheduler/queue",
                 "cancel_scheduled": "/api/publish/scheduler/{publish_id}",
                 "reschedule": "/api/publish/scheduler/reschedule/{publish_id}"

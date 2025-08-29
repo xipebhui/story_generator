@@ -46,6 +46,7 @@ import TaskDetailDrawer from '../../components/TaskDetailDrawer';
 import PublishModal from '../../components/PublishModal';
 import AccountManager from '../../components/AccountManager';
 import PublishStatus from '../../components/PublishStatus';
+import PublishStatusBadge from '../../components/PublishStatusBadge';
 import { pipelineAdapter } from '../../services/pipelineAdapter';
 import { Task, TaskStatus } from '../../types/task';
 import { workflows } from '../../config/workflows';
@@ -93,20 +94,6 @@ const Dashboard: React.FC = () => {
     try {
       const response = await pipelineAdapter.listTasks();
       const taskList = response.tasks || [];
-      
-      // 打印任务数据，查看是否有error_message
-      console.log('=== Dashboard 收到的任务列表 ===');
-      console.log('任务总数:', taskList.length);
-      taskList.forEach((task: Task) => {
-        if (task.status === 'failed') {
-          console.log('失败任务:', {
-            task_id: task.task_id,
-            status: task.status,
-            error_message: task.error_message,
-            全部字段: Object.keys(task)
-          });
-        }
-      });
       
       setTasks(taskList);
       setLastRefreshTime(new Date());
@@ -184,11 +171,12 @@ const Dashboard: React.FC = () => {
 
   // 渲染任务项
   const renderTaskItem = (task: Task) => {
-    const statusColors = {
+    const statusColors: Record<TaskStatus, string> = {
       pending: '#8898aa',
       running: '#5e72e4',
       completed: '#2dce89',
-      failed: '#f5365c'
+      failed: '#f5365c',
+      cancelled: '#f5365c'
     };
 
     const statusIcons = {
@@ -224,6 +212,13 @@ const Dashboard: React.FC = () => {
                 {statusIcons[task.status as TaskStatus]}
                 {task.status}
               </span>
+              {task.status === 'completed' && (
+                <PublishStatusBadge
+                  publishSummary={task.publish_summary}
+                  publishStatus={task.publish_status}
+                  publishedAccounts={task.published_accounts}
+                />
+              )}
               <span>创建于 {dayjs(task.created_at).format('YYYY-MM-DD HH:mm:ss')}</span>
               {(task.total_duration || task.duration) && (
                 <span>
@@ -634,8 +629,11 @@ const Dashboard: React.FC = () => {
           setDetailDrawerVisible(false);
           setSelectedTask(null);
         }}
-        onPublish={(task) => {
+        onPublish={() => {
           setPublishModalVisible(true);
+        }}
+        onTaskRefresh={() => {
+          loadTasks(); // 刷新任务列表
         }}
       />
 

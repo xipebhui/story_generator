@@ -1,6 +1,7 @@
 // Pipeline适配器 - 将前端期望的接口适配到实际后端
 import { Task, TaskStatus, TaskResult } from '../types/task';
-import { backendPipelineService, taskManager, TaskStatus as BackendTaskStatus, backendAccountService } from './backend';
+import { backendPipelineService, taskManager, backendAccountService } from './backend';
+import { TaskStatus as BackendTaskStatus } from './backend';
 import api from './api';
 
 class PipelineAdapter {
@@ -11,33 +12,58 @@ class PipelineAdapter {
   // 创建新的Pipeline任务
   async createTask(workflow: string, params: any): Promise<Task> {
     try {
-      // 根据工作流类型生成合适的参数
-      const videoId = params.video_id || this.generateVideoId(workflow);
-      const creatorId = params.creator_id || this.generateCreatorId();
+      let response: any;
+      let task: Task;
       
-      // 调用后端API创建任务
-      const response = await backendPipelineService.createPipeline({
-        videoId,
-        creatorId,
-        accountName: params.account_name,  // 添加账号名称参数
-        gender: this.getGenderFromParams(params),
-        duration: params.duration || 60,
-        exportVideo: params.export_video || false,
-        enableSubtitle: params.enable_subtitle !== false
-      });
-      
-      const task: Task = {
-        task_id: response.task_id,
-        workflow,
-        status: 'pending',
-        progress: 0,
-        created_at: new Date().toISOString(),
-        params: {
-          ...params,
-          video_id: videoId,
-          creator_id: creatorId
-        }
-      };
+      // 检查是否是视频合并工作流
+      if (workflow === 'video-merge') {
+        // 视频合并使用专门的API
+        const { pipelineService } = await import('./pipeline');
+        response = await pipelineService.mergeVideos({
+          portrait_folder: params.portrait_folder,
+          landscape_folder: params.landscape_folder,
+          custom_id: params.custom_id
+        });
+        
+        task = {
+          task_id: response.task_id,
+          workflow: '视频拼接',
+          status: 'pending',
+          progress: 0,
+          created_at: new Date().toISOString(),
+          params: {
+            ...params
+          }
+        };
+      } else {
+        // 其他工作流使用原有逻辑
+        const videoId = params.video_id || this.generateVideoId(workflow);
+        const creatorId = params.creator_id || this.generateCreatorId();
+        
+        // 调用后端API创建任务
+        response = await backendPipelineService.createPipeline({
+          videoId,
+          creatorId,
+          accountName: params.account_name,  // 添加账号名称参数
+          gender: this.getGenderFromParams(params),
+          duration: params.duration || 60,
+          exportVideo: params.export_video || false,
+          enableSubtitle: params.enable_subtitle !== false
+        });
+        
+        task = {
+          task_id: response.task_id,
+          workflow,
+          status: 'pending',
+          progress: 0,
+          created_at: new Date().toISOString(),
+          params: {
+            ...params,
+            video_id: videoId,
+            creator_id: creatorId
+          }
+        };
+      }
 
       // 保存到内存
       this.tasks.set(response.task_id, task);
@@ -61,21 +87,9 @@ class PipelineAdapter {
         page_size: 100
       });
       
-      console.log('=== 从后端获取的任务历史数据 ===');
-      console.log('任务总数:', history.tasks.length);
       
       // 合并后端任务到本地任务列表
       history.tasks.forEach(backendTask => {
-        // 打印每个失败任务的详细信息
-        if (backendTask.status === 'failed') {
-          console.log('失败任务详情:', {
-            task_id: backendTask.task_id,
-            status: backendTask.status,
-            error_message: backendTask.error_message,
-            error: backendTask.error,
-            全部字段: Object.keys(backendTask)
-          });
-        }
         
         if (!this.tasks.has(backendTask.task_id)) {
           const task: Task = {
@@ -89,16 +103,19 @@ class PipelineAdapter {
             total_duration: backendTask.total_duration,
             duration: backendTask.duration,
             error_message: backendTask.error_message || backendTask.error, // 尝试从error字段获取
+            // 添加发布状态信息
+            publish_summary: backendTask.publish_summary,
+            publish_status: backendTask.publish_status,
+            published_accounts: backendTask.published_accounts?.map(account => ({
+          ...account,
+          status: account.status as 'pending' | 'uploading' | 'success' | 'failed' | 'cancelled'
+        })),
             params: {
               video_id: backendTask.video_id,
               creator_id: backendTask.creator_id
             }
           };
           
-          // 如果有error_message，打印出来
-          if (task.error_message) {
-            console.log(`任务 ${task.task_id} 有错误信息:`, task.error_message);
-          }
           
           this.tasks.set(backendTask.task_id, task);
           
@@ -134,9 +151,7 @@ class PipelineAdapter {
       const accountName = originalTask?.params?.account_name;
       
       // 调用后端重试接口，后端会返回新的任务ID
-      console.log('[PipelineAdapter] 调用后端重试接口，原任务ID:', taskId);
       const response = await backendPipelineService.retryPipeline(taskId, accountName);
-      console.log('[PipelineAdapter] 后端返回新任务:', response);
       
       // 后端返回了新的任务ID，我们需要：
       // 1. 从本地删除原任务
@@ -144,7 +159,6 @@ class PipelineAdapter {
       const newTaskId = response.task_id;
       
       if (newTaskId !== taskId) {
-        console.log('[PipelineAdapter] 后端创建了新任务ID:', newTaskId, '原ID:', taskId);
         
         // 删除原任务
         this.tasks.delete(taskId);
@@ -175,11 +189,9 @@ class PipelineAdapter {
         // 开始轮询新任务状态
         this.startStatusPolling(newTaskId);
         
-        console.log('[PipelineAdapter] 重试任务成功，新任务ID:', newTaskId);
         return newTask;
       } else {
         // 如果任务ID相同（理论上不应该发生），使用原逻辑
-        console.log('[PipelineAdapter] 任务ID未变化，更新原任务状态');
         originalTask.status = 'pending';
         originalTask.progress = 0;
         originalTask.current_stage = null;
@@ -239,6 +251,10 @@ class PipelineAdapter {
           total_duration: (backendStatus as any).total_duration,
           duration: (backendStatus as any).duration,
           error_message: backendStatus.error_message,
+          // 添加发布状态信息
+          publish_summary: (backendStatus as any).publish_summary,
+          publish_status: (backendStatus as any).publish_status,
+          published_accounts: (backendStatus as any).published_accounts,
           params: {
             video_id: backendStatus.video_id,
             creator_id: backendStatus.creator_id
@@ -267,11 +283,12 @@ class PipelineAdapter {
     if (!result) {
       // 从后端获取任务结果 - 使用统一的 api 服务
       try {
-        const data = await api.get(`/pipeline/result/${taskId}`);
+        const response = await api.get(`/pipeline/result/${taskId}`);
+        const data = response.data || response;
         
         result = {
-          task_id: data.task_id,
-          status: data.status,
+          task_id: taskId,  // 使用传入的taskId
+          status: data.status || 'unknown',
           video_path: data.video_path || '',
           draft_path: data.draft_path || '',
           audio_path: data.audio_path || '',
@@ -341,7 +358,6 @@ class PipelineAdapter {
     
     const task = this.tasks.get(taskId);
     if (!task) {
-      console.log(`任务 ${taskId} 不在本地缓存中，跳过轮询`);
       return;
     }
 
@@ -351,7 +367,6 @@ class PipelineAdapter {
       (status: BackendTaskStatus) => {
         // 检查任务是否还在本地缓存中
         if (!this.tasks.has(taskId)) {
-          console.log(`任务 ${taskId} 已从本地缓存删除，停止更新`);
           // 停止轮询
           const handler = this.pollHandlers.get(taskId);
           if (handler) {
@@ -365,6 +380,11 @@ class PipelineAdapter {
         task.status = status.status as TaskStatus;
         task.progress = status.progress;
         task.current_stage = status.current_stage || '处理中';
+        
+        // 更新发布状态信息
+        task.publish_summary = (status as any).publish_summary;
+        task.publish_status = (status as any).publish_status;
+        task.published_accounts = (status as any).published_accounts;
         
         // 如果有阶段信息，更新
         if (status.stages) {
@@ -454,6 +474,10 @@ class PipelineAdapter {
 
   // 检测工作流类型
   private detectWorkflow(task: any): string {
+    // 检查是否是视频合并任务
+    if (task.request_data?.type === 'video_merge' || task.task_id?.includes('merge')) {
+      return '视频拼接';
+    }
     if (task.video_id?.includes('story')) return 'YouTube故事';
     if (task.video_id?.includes('comic')) return 'YouTube漫画';
     if (task.video_id?.includes('asmr')) return 'YouTube解压';

@@ -148,13 +148,6 @@ class PublishService:
                 if not publish_task:
                     return {'success': False, 'error': '发布任务不存在'}
                 
-                # 获取Pipeline任务以获取YouTube元数据
-                from database import PipelineTask
-                pipeline_task = session.query(PipelineTask).filter_by(task_id=publish_task.task_id).first()
-                youtube_metadata = {}
-                if pipeline_task and pipeline_task.youtube_metadata:
-                    youtube_metadata = json.loads(pipeline_task.youtube_metadata)
-                
                 # 获取账号信息
                 account = self.account_service.get_account_by_id(publish_task.account_id)
                 if not account:
@@ -166,48 +159,79 @@ class PublishService:
                     'upload_started_at': get_beijing_now()
                 })
                 
-                # 处理标签 - 只使用英文标签
-                tags_data = youtube_metadata.get('tags', [])
-                english_tags = []
+                # 优先使用 publish_task 中的标签和描述（从请求中传入的）
+                # 如果没有，则从 PipelineTask 的 youtube_metadata 中获取
                 
-                if isinstance(tags_data, dict):
-                    # 首先获取english标签
-                    if 'english' in tags_data and tags_data['english']:
-                        english_tags = tags_data['english']
-                    
-                    # 如果english标签为空或不足，从mixed中过滤英文标签
-                    if len(english_tags) < 10 and 'mixed' in tags_data:
-                        for tag in tags_data['mixed']:
-                            # 判断是否为英文标签（只包含英文字母、数字、空格和常见符号）
-                            if tag and re.match(r'^[a-zA-Z0-9\s\-\'&.,!]+$', tag):
-                                if tag not in english_tags:  # 避免重复
-                                    english_tags.append(tag)
-                                    if len(english_tags) >= 20:  # YouTube限制最多20个标签
-                                        break
-                    
-                    tags_for_upload = english_tags[:20]
-                elif isinstance(tags_data, list):
-                    # 如果是列表格式，过滤出英文标签
-                    for tag in tags_data:
-                        if tag and re.match(r'^[a-zA-Z0-9\s\-\'&.,!]+$', tag):
-                            english_tags.append(tag)
-                            if len(english_tags) >= 20:
-                                break
-                    tags_for_upload = english_tags
-                else:
-                    tags_for_upload = []
+                # 处理描述
+                description = publish_task.video_description or ""
                 
-                logger.debug(f"[标签处理] 原始标签: {tags_data}")
-                logger.debug(f"[标签处理] 英文标签: {tags_for_upload}")
+                # 如果 publish_task 没有描述，尝试从 youtube_metadata 获取
+                if not description:
+                    from database import PipelineTask
+                    pipeline_task = session.query(PipelineTask).filter_by(task_id=publish_task.task_id).first()
+                    if pipeline_task and pipeline_task.youtube_metadata:
+                        youtube_metadata = json.loads(pipeline_task.youtube_metadata)
+                        description = youtube_metadata.get('description', '')
                 
-                # 处理描述 - 从youtube_metadata中获取，但要清理特殊字符
-                description = youtube_metadata.get('description', '')
+                # 清理描述中的特殊字符
                 if description:
-                    # 清理可能导致问题的字符
                     description = description.replace('\x00', '').replace('\r', '\n')
                     # YouTube描述限制5000字符
                     if len(description) > 5000:
                         description = description[:4997] + '...'
+                
+                # 处理标签
+                tags_for_upload = []
+                
+                # 优先使用 publish_task 中的标签
+                if publish_task.video_tags:
+                    tags_data = json.loads(publish_task.video_tags) if isinstance(publish_task.video_tags, str) else publish_task.video_tags
+                    
+                    # 如果是列表格式
+                    if isinstance(tags_data, list):
+                        # 过滤出英文标签
+                        for tag in tags_data:
+                            if tag and re.match(r'^[a-zA-Z0-9\s\-\'&.,!]+$', tag):
+                                tags_for_upload.append(tag)
+                                if len(tags_for_upload) >= 20:  # YouTube限制最多20个标签
+                                    break
+                    # 如果是字典格式（有可能前端传来的是结构化的）
+                    elif isinstance(tags_data, dict):
+                        if 'english' in tags_data and tags_data['english']:
+                            tags_for_upload = tags_data['english'][:20]
+                        elif 'mixed' in tags_data:
+                            for tag in tags_data['mixed']:
+                                if tag and re.match(r'^[a-zA-Z0-9\s\-\'&.,!]+$', tag):
+                                    tags_for_upload.append(tag)
+                                    if len(tags_for_upload) >= 20:
+                                        break
+                
+                # 如果没有标签，尝试从 youtube_metadata 获取
+                if not tags_for_upload:
+                    from database import PipelineTask
+                    pipeline_task = session.query(PipelineTask).filter_by(task_id=publish_task.task_id).first()
+                    if pipeline_task and pipeline_task.youtube_metadata:
+                        youtube_metadata = json.loads(pipeline_task.youtube_metadata)
+                        tags_data = youtube_metadata.get('tags', [])
+                        
+                        if isinstance(tags_data, dict):
+                            if 'english' in tags_data and tags_data['english']:
+                                tags_for_upload = tags_data['english'][:20]
+                            elif 'mixed' in tags_data:
+                                for tag in tags_data['mixed']:
+                                    if tag and re.match(r'^[a-zA-Z0-9\s\-\'&.,!]+$', tag):
+                                        tags_for_upload.append(tag)
+                                        if len(tags_for_upload) >= 20:
+                                            break
+                        elif isinstance(tags_data, list):
+                            for tag in tags_data:
+                                if tag and re.match(r'^[a-zA-Z0-9\s\-\'&.,!]+$', tag):
+                                    tags_for_upload.append(tag)
+                                    if len(tags_for_upload) >= 20:
+                                        break
+                
+                logger.debug(f"[标签处理] 最终标签: {tags_for_upload}")
+                logger.debug(f"[描述处理] 描述长度: {len(description)}")
                 
                 # 构建上传请求 - 符合真实YouTube上传API格式
                 upload_request = {
@@ -252,7 +276,7 @@ class PublishService:
                     async with session.post(
                         self.upload_url,
                         json=upload_request,
-                        timeout=aiohttp.ClientTimeout(total=600)  # 10分钟超时
+                        timeout=aiohttp.ClientTimeout(total=2400)  # 40分钟超时
                     ) as response:
                         response_text = await response.text()
                         

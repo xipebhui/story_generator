@@ -1,0 +1,58 @@
+{
+  "api": {
+    "base_url": "http://localhost:51082",
+    "api_key": "test-api-key-12345",
+    "timeout": 30
+  },
+  "test_settings": {
+    "cleanup_after_test": true,
+    "verbose_logging": true,
+    "skip_data_setup": false,
+    "test_cases": {
+      "retry_tests": {
+        "enabled": true,
+        "test_failed_retry": true,
+        "test_success_retry_block": true,
+        "test_uploading_retry_block": true,
+        "test_nonexistent_retry": true
+      },
+      "delete_tests": {
+        "enabled": true,
+        "test_failed_delete": true,
+        "test_success_delete": true,
+        "test_uploading_delete_block": true,
+        "test_nonexistent_delete": true
+      },
+      "display_verification": {
+        "enabled": true
+      }
+    }
+  },
+  "test_data": {
+    "num_pipeline_tasks": 2,
+    "num_accounts_to_use": 2,
+    "test_video_titles": [
+      "测试视频标题 1 - 重试删除功能测试",
+      "测试视频标题 2 - 自动化测试视频"
+    ],
+    "test_descriptions": [
+      "这是一个用于测试重试和删除功能的测试视频",
+      "自动化测试生成的视频，用于验证发布系统功能"
+    ],
+    "test_tags": [
+      ["测试", "重试", "删除", "自动化"],
+      ["测试", "发布", "功能验证", "质量保证"]
+    ],
+    "simulated_states": ["failed", "success", "uploading", "pending"]
+  },
+  "expected_results": {
+    "retry_failed_should_succeed": true,
+    "retry_success_should_fail": true,
+    "retry_uploading_should_fail": true,
+    "retry_nonexistent_should_fail": true,
+    "delete_failed_should_succeed": true,
+    "delete_success_should_succeed": true,
+    "delete_uploading_should_fail": true,
+    "delete_nonexistent_should_fail": true
+  }
+}

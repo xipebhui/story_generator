@@ -17,6 +17,13 @@ interface TaskListResponse {
   tasks: Task[];
 }
 
+// 视频合并请求接口
+interface VideoMergeRequest {
+  portrait_folder: string;
+  landscape_folder: string;
+  custom_id?: string;
+}
+
 class PipelineService {
   // 创建任务
   async runPipeline(request: PipelineRequest): Promise<CreateTaskResponse> {
@@ -53,6 +60,15 @@ class PipelineService {
     const response = await api.get('/health');
     return response.data || response;
   }
+
+  // 视频合并
+  async mergeVideos(request: VideoMergeRequest): Promise<CreateTaskResponse> {
+    const response = await api.post('/video/merge', request);
+    return response.data || response;
+  }
+  
+  // 注意：视频合并任务的状态查询复用 getStatus 和 getResult 方法
 }
 
 export const pipelineService = new PipelineService();
+export type { VideoMergeRequest };

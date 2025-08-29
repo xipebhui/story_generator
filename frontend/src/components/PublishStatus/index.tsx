@@ -10,7 +10,8 @@ import {
   message,
   Empty,
   Avatar,
-  Typography
+  Typography,
+  Popconfirm
 } from 'antd';
 import {
   CloudUploadOutlined,
@@ -23,7 +24,9 @@ import {
   UserOutlined,
   CalendarOutlined,
   ReloadOutlined,
-  ExclamationCircleOutlined
+  ExclamationCircleOutlined,
+  DeleteOutlined,
+  RedoOutlined
 } from '@ant-design/icons';
 import { PublishTask } from '../../types/account';
 import { accountService } from '../../services/account';
@@ -44,6 +47,8 @@ const PublishStatus: React.FC<PublishStatusProps> = ({
 }) => {
   const [publishTasks, setPublishTasks] = useState<PublishTask[]>([]);
   const [loading, setLoading] = useState(false);
+  const [retryLoading, setRetryLoading] = useState<{ [key: string]: boolean }>({});
+  const [deleteLoading, setDeleteLoading] = useState<{ [key: string]: boolean }>({});
 
   // 加载发布任务
   const loadPublishTasks = async () => {
@@ -123,14 +128,43 @@ const PublishStatus: React.FC<PublishStatusProps> = ({
     );
   };
 
-  // 处理取消发布
-  const handleCancel = async (id: string) => {
+  // 处理取消发布（用于pending和运行中的任务）
+  const handleCancel = async (publishId: string) => {
     try {
-      await accountService.cancelPublishTask(id);
+      // 对于运行中的任务，使用backendAccountService的取消方法
+      await backendAccountService.cancelPublishTask(publishId);
       message.success('已取消发布任务');
       loadPublishTasks();
     } catch (error) {
       message.error('取消失败');
+    }
+  };
+
+  // 处理重试发布
+  const handleRetry = async (publishId: string) => {
+    setRetryLoading({ ...retryLoading, [publishId]: true });
+    try {
+      await backendAccountService.retryPublishTask(publishId);
+      message.success('重试任务已启动');
+      loadPublishTasks();
+    } catch (error: any) {
+      message.error(error.message || '重试失败');
+    } finally {
+      setRetryLoading({ ...retryLoading, [publishId]: false });
+    }
+  };
+
+  // 处理删除发布记录
+  const handleDelete = async (publishId: string) => {
+    setDeleteLoading({ ...deleteLoading, [publishId]: true });
+    try {
+      await backendAccountService.deletePublishTask(publishId);
+      message.success('删除成功');
+      loadPublishTasks();
+    } catch (error: any) {
+      message.error(error.message || '删除失败');
+    } finally {
+      setDeleteLoading({ ...deleteLoading, [publishId]: false });
     }
   };
 
@@ -289,22 +323,64 @@ const PublishStatus: React.FC<PublishStatusProps> = ({
               取消
             </Button>
           )}
-          {record.status === 'failed' && record.error_message && (
-            <Tooltip title={`错误信息: ${record.error_message}`}>
-              <Button 
-                size="small" 
-                danger
-                icon={<ExclamationCircleOutlined />}
+          {record.status === 'failed' && (
+            <>
+              <Button
+                size="small"
+                icon={<RedoOutlined />}
+                onClick={() => handleRetry(record.publish_id)}
+                loading={retryLoading[record.publish_id]}
                 style={{ fontSize: 12 }}
               >
-                错误
+                重试
               </Button>
-            </Tooltip>
+              {record.error_message && (
+                <Tooltip title={`错误信息: ${record.error_message}`}>
+                  <Button 
+                    size="small" 
+                    danger
+                    icon={<ExclamationCircleOutlined />}
+                    style={{ fontSize: 12 }}
+                  >
+                    错误
+                  </Button>
+                </Tooltip>
+              )}
+            </>
           )}
           {(record.status === 'uploading' || record.status === 'publishing') && (
-            <Tag color="processing" icon={<SyncOutlined spin />}>
-              处理中
-            </Tag>
+            <>
+              <Button
+                size="small"
+                danger
+                onClick={() => handleCancel(record.publish_id)}
+                style={{ fontSize: 12 }}
+              >
+                取消
+              </Button>
+              <Tag color="processing" icon={<SyncOutlined spin />}>
+                处理中
+              </Tag>
+            </>
+          )}
+          {record.status !== 'uploading' && record.status !== 'publishing' && (
+            <Popconfirm
+              title="确认删除"
+              description="确定要删除这条发布记录吗？"
+              onConfirm={() => handleDelete(record.publish_id)}
+              okText="确定"
+              cancelText="取消"
+            >
+              <Button
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                loading={deleteLoading[record.publish_id]}
+                style={{ fontSize: 12 }}
+              >
+                删除
+              </Button>
+            </Popconfirm>
           )}
         </Space>
       )

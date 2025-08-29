@@ -57,9 +57,13 @@ from auth_middleware import (
     get_current_user, require_auth, hash_password, verify_password,
     generate_api_key, get_invite_code, get_auth_enabled
 )
+from pipeline_video_merge import VideoMergePipeline
 
 # 初始化数据库
 db_manager = init_database()
+
+# 初始化视频合并Pipeline
+video_merge_pipeline = VideoMergePipeline()
 account_service = get_account_service()
 # 始终使用真实的YouTube上传API
 publish_service = get_publish_service(use_mock=False)  # 强制使用真实接口
@@ -265,6 +269,12 @@ class TaskResult(BaseModel):
     error: Optional[str] = None
     publish_tasks: Optional[List[Dict[str, Any]]] = None
 
+class VideoMergeRequest(BaseModel):
+    """视频拼接请求"""
+    portrait_folder: str  # 竖屏视频文件夹路径
+    landscape_folder: str  # 横屏视频文件夹路径
+    custom_id: Optional[str] = None  # 自定义任务ID
+    
 class PublishRequest(BaseModel):
     task_id: str
     account_ids: List[str]  # 发布到的账号ID列表
@@ -673,6 +683,48 @@ async def run_pipeline(
         "result_url": f"/api/pipeline/result/{task_id}"
     }
 
+def get_task_publish_status(task_id: str) -> dict:
+    """获取任务的发布状态统计"""
+    publish_tasks = db_manager.get_publish_tasks_by_task(task_id)
+    
+    status_count = {
+        'total': len(publish_tasks),
+        'success': 0,
+        'pending': 0,
+        'uploading': 0,
+        'failed': 0
+    }
+    
+    published_accounts = []
+    
+    for pt in publish_tasks:
+        # 统计各状态数量
+        if pt.status == 'success':
+            status_count['success'] += 1
+        elif pt.status == 'pending':
+            status_count['pending'] += 1
+        elif pt.status == 'uploading':
+            status_count['uploading'] += 1
+        elif pt.status == 'failed':
+            status_count['failed'] += 1
+        
+        # 获取账号信息
+        account = db_manager.get_account_by_id(pt.account_id)
+        published_accounts.append({
+            'publish_id': pt.publish_id,  # 添加publish_id
+            'account_id': pt.account_id,
+            'account_name': account.account_name if account else pt.account_id,
+            'status': pt.status,
+            'youtube_video_url': pt.youtube_video_url,
+            'published_at': pt.upload_completed_at.isoformat() if pt.upload_completed_at else None,
+            'error_message': pt.error_message
+        })
+    
+    return {
+        'publish_status': status_count,
+        'published_accounts': published_accounts
+    }
+
 @app.get("/api/pipeline/status/{task_id}")
 async def get_status(
     task_id: str,
@@ -684,17 +736,24 @@ async def get_status(
         raise HTTPException(status_code=404, detail="任务不存在")
     
     task_dict = task.to_dict()
-    return TaskStatus(
-        task_id=task_id,
-        status=task_dict['status'],
-        current_stage=task_dict.get('current_stage'),
-        progress=task_dict.get('progress', {}),
-        created_at=task_dict['created_at'],
-        started_at=task_dict.get('started_at'),
-        completed_at=task_dict.get('completed_at'),
-        total_duration=task_dict.get('total_duration'),
-        error=task_dict.get('error')  # 添加错误信息
-    )
+    
+    # 获取发布状态
+    publish_info = get_task_publish_status(task_id)
+    
+    return {
+        **TaskStatus(
+            task_id=task_id,
+            status=task_dict['status'],
+            current_stage=task_dict.get('current_stage'),
+            progress=task_dict.get('progress', {}),
+            created_at=task_dict['created_at'],
+            started_at=task_dict.get('started_at'),
+            completed_at=task_dict.get('completed_at'),
+            total_duration=task_dict.get('total_duration'),
+            error=task_dict.get('error')  # 添加错误信息
+        ).dict(),
+        **publish_info
+    }
 
 @app.get("/api/pipeline/result/{task_id}")
 async def get_result(
@@ -727,6 +786,179 @@ async def get_result(
         error=task_dict.get('error'),
         publish_tasks=[pt.to_dict() for pt in publish_tasks]
     )
+
+# ============ 视频拼接接口 ============
+@app.post("/api/video/merge")
+async def merge_videos(
+    request: VideoMergeRequest,
+    background_tasks: BackgroundTasks,
+    current_user: Optional[User] = Depends(get_current_user)
+):
+    """视频拼接接口
+    
+    将多个竖屏视频和一个横屏视频合成为剪映草稿
+    - portrait_folder: 竖屏视频文件夹路径
+    - landscape_folder: 横屏视频文件夹路径
+    - custom_id: 自定义任务ID（可选）
+    """
+    task_id = request.custom_id or f"merge_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}"
+    
+    # 创建数据库记录
+    db_task = db_manager.create_task(
+        task_id=task_id,
+        video_id=f"merge_{task_id}",
+        creator_id="video_merge",
+        status="运行中",
+        request_data={
+            "portrait_folder": request.portrait_folder,
+            "landscape_folder": request.landscape_folder,
+            "custom_id": request.custom_id,
+            "type": "video_merge"
+        }
+    )
+    
+    logger.info(f"创建视频拼接任务: {task_id}")
+    
+    # 异步执行视频拼接
+    async def run_merge_task():
+        try:
+            # 更新任务状态
+            db_manager.update_task(task_id, {
+                'status': '运行中',
+                'current_stage': '视频拼接'
+            })
+            
+            # 创建pipeline实例
+            pipeline = VideoMergePipeline(task_id)
+            
+            # 执行拼接
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                pipeline.process,
+                request.portrait_folder,
+                request.landscape_folder,
+                None,  # output_dir使用默认值
+                task_id
+            )
+            
+            if result['success']:
+                # 更新成功状态
+                db_manager.update_task(task_id, {
+                    'status': '已完成',
+                    'end_time': get_beijing_now(),
+                    'draft_path': result['draft_path'],
+                    'result': result
+                })
+                logger.info(f"视频拼接任务完成: {task_id}")
+            else:
+                # 更新失败状态
+                db_manager.update_task(task_id, {
+                    'status': '失败',
+                    'end_time': get_beijing_now(),
+                    'error': result.get('error', '未知错误')
+                })
+                logger.error(f"视频拼接任务失败: {task_id}, 错误: {result.get('error')}")
+                
+        except Exception as e:
+            logger.error(f"执行视频拼接任务时出错: {e}", exc_info=True)
+            db_manager.update_task(task_id, {
+                'status': '失败',
+                'end_time': get_beijing_now(),
+                'error': str(e)
+            })
+    
+    # 添加后台任务
+    background_tasks.add_task(run_merge_task)
+    
+    return {
+        "task_id": task_id,
+        "status": "任务已创建",
+        "message": "视频拼接任务已开始执行"
+    }
+
+@app.get("/api/video/merge/{task_id}")
+async def get_merge_status(
+    task_id: str,
+    current_user: Optional[User] = Depends(get_current_user)
+):
+    """获取视频拼接任务状态"""
+    task = db_manager.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    
+    task_dict = task.to_dict()
+    
+    # 检查是否为视频拼接任务
+    request_data = task_dict.get('request_data', {})
+    if request_data.get('type') != 'video_merge':
+        raise HTTPException(status_code=400, detail="非视频拼接任务")
+    
+    return {
+        "task_id": task_dict['task_id'],
+        "status": task_dict['status'],
+        "current_stage": task_dict.get('current_stage'),
+        "start_time": task_dict['start_time'],
+        "end_time": task_dict.get('end_time'),
+        "draft_path": task_dict.get('draft_path'),
+        "result": task_dict.get('result'),
+        "error": task_dict.get('error')
+    }
+
+@app.get("/api/pipeline/tasks")
+async def get_tasks(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    status: Optional[str] = Query(None),
+    current_user: Optional[User] = Depends(get_current_user)
+):
+    """获取任务列表，包含发布状态信息"""
+    # 计算分页
+    offset = (page - 1) * page_size
+    
+    # 查询任务
+    tasks = db_manager.get_tasks_history(
+        status=status,
+        limit=page_size,
+        offset=offset
+    )
+    
+    # 添加发布状态信息到每个任务
+    tasks_with_publish_status = []
+    for task in tasks:
+        task_dict = task.to_dict()
+        publish_info = get_task_publish_status(task.task_id)
+        
+        # 计算发布状态总结
+        publish_summary = "未发布"
+        if publish_info['publish_status']['total'] > 0:
+            success_count = publish_info['publish_status']['success']
+            total_count = publish_info['publish_status']['total']
+            
+            if success_count == total_count:
+                publish_summary = f"已发布 ({success_count})"
+            elif success_count > 0:
+                publish_summary = f"部分发布 ({success_count}/{total_count})"
+            elif publish_info['publish_status']['failed'] > 0:
+                publish_summary = f"发布失败 (0/{total_count})"
+            else:
+                publish_summary = f"待发布 (0/{total_count})"
+        
+        tasks_with_publish_status.append({
+            **task_dict,
+            'publish_summary': publish_summary,
+            **publish_info
+        })
+    
+    # 获取总数
+    total = db_manager.get_tasks_count(status=status)
+    
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "tasks": tasks_with_publish_status
+    }
 
 @app.get("/api/pipeline/history")
 async def get_history(
@@ -1266,8 +1498,20 @@ async def get_publish_history(
     }
 
 @app.post("/api/publish/retry/{publish_id}")
-async def retry_publish(publish_id: str, background_tasks: BackgroundTasks):
+async def retry_publish(publish_id: str, background_tasks: BackgroundTasks, user: Optional[User] = Depends(get_current_user)):
     """重试失败的发布"""
+    # 首先检查发布任务是否存在
+    publish_task = db_manager.get_publish_task(publish_id)
+    if not publish_task:
+        raise HTTPException(status_code=404, detail="发布任务不存在")
+    
+    # 检查任务状态是否允许重试（只允许失败或取消的任务重试）
+    if publish_task.status not in ['failed', 'cancelled']:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"任务状态不允许重试，当前状态: {publish_task.status}"
+        )
+    
     background_tasks.add_task(publish_service.retry_failed_publish, publish_id)
     
     return {
@@ -1317,6 +1561,36 @@ async def reschedule_publish(publish_id: str, new_time: datetime):
         "message": f"发布时间已更新为 {new_time}",
         "publish_id": publish_id,
         "new_scheduled_time": new_time.isoformat()
+    }
+
+@app.delete("/api/publish/task/{publish_id}")
+async def delete_publish_task(publish_id: str, user: Optional[User] = Depends(get_current_user)):
+    """删除发布任务记录"""
+    # 检查发布任务是否存在
+    publish_task = db_manager.get_publish_task(publish_id)
+    if not publish_task:
+        raise HTTPException(status_code=404, detail="发布任务不存在")
+    
+    # 检查任务状态，如果正在上传则不允许删除
+    if publish_task.status == 'uploading':
+        raise HTTPException(
+            status_code=400, 
+            detail="正在上传的任务不能删除，请等待上传完成或失败后再删除"
+        )
+    
+    # 如果是定时任务且还未执行，从调度器中移除
+    if publish_task.is_scheduled and publish_task.status == 'pending':
+        publish_scheduler.remove_task(publish_id)
+        logger.info(f"已从定时发布调度器中移除任务: {publish_id}")
+    
+    # 删除数据库记录
+    success = db_manager.delete_publish_task(publish_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="删除发布任务失败")
+    
+    return {
+        "message": "发布任务已删除",
+        "publish_id": publish_id
     }
 
 # ============ 账号管理端点 ============
@@ -1506,6 +1780,7 @@ async def root():
                 "batch": "/api/publish/batch",
                 "history": "/api/publish/history",
                 "retry": "/api/publish/retry/{publish_id}",
+                "delete_task": "/api/publish/task/{publish_id}",
                 "scheduler_queue": "/api/publish/scheduler/queue",
                 "cancel_scheduled": "/api/publish/scheduler/{publish_id}",
                 "reschedule": "/api/publish/scheduler/reschedule/{publish_id}"

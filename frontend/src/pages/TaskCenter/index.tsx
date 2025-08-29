@@ -78,16 +78,19 @@ const TaskCenter: React.FC = () => {
       setTasks(response.tasks || []);
       
       // 计算统计数据
-      const stats = {
+      const stats: any = {
         total: response.total || 0,
         pending: 0,
         running: 0,
         completed: 0,
-        failed: 0
+        failed: 0,
+        cancelled: 0
       };
       
       response.tasks?.forEach((task: Task) => {
-        stats[task.status]++;
+        if (stats.hasOwnProperty(task.status)) {
+          stats[task.status]++;
+        }
       });
       
       setStatistics(stats);
@@ -445,6 +448,9 @@ const TaskCenter: React.FC = () => {
         onClose={() => {
           setDetailDrawerVisible(false);
           setSelectedTask(null);
+        }}
+        onTaskRefresh={() => {
+          loadTasks(); // 刷新任务列表
         }}
       />
 

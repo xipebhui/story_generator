@@ -82,6 +82,26 @@ export interface TaskResultResponse {
   error?: string;
 }
 
+// 发布状态统计
+export interface PublishStatusCount {
+  total: number;
+  success: number;
+  pending: number;
+  uploading: number;
+  failed: number;
+}
+
+// 发布账号信息
+export interface PublishedAccount {
+  account_id: string;
+  account_name: string;
+  status: 'pending' | 'uploading' | 'success' | 'failed' | 'cancelled';
+  youtube_video_url?: string | null;
+  published_at?: string | null;
+  error_message?: string | null;
+  publish_id?: string; // 发布任务ID，用于重试和删除操作
+}
+
 // 任务类型
 export interface Task {
   task_id: string;
@@ -101,6 +121,10 @@ export interface Task {
     start_time?: string;
     end_time?: string;
   }>;
+  // 发布状态相关
+  publish_summary?: string;  // 发布状态总结，如 "已发布 (2)" 或 "部分发布 (1/3)"
+  publish_status?: PublishStatusCount;  // 发布状态统计
+  published_accounts?: PublishedAccount[];  // 已发布账号列表
 }
 
 // 任务结果

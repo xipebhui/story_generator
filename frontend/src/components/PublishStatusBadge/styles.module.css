@@ -1,0 +1,33 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.pending {
+  background-color: #f0f0f0;
+  color: #595959;
+}
+
+.uploading {
+  background-color: #e6f7ff;
+  color: #1890ff;
+}
+
+.success {
+  background-color: #f6ffed;
+  color: #52c41a;
+}
+
+.failed {
+  background-color: #fff2e8;
+  color: #fa8c16;
+}
+
+.cancelled {
+  background-color: #fafafa;
+  color: #8c8c8c;
+}
