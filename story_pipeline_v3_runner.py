@@ -159,10 +159,17 @@ class StrictPipeline(Pipeline):
 
 
 class StoryPipelineV3Runner:
-    """V3 Pipeline运行器"""
+    """V3 Pipeline运行器 - 支持账号驱动自动发布系统"""
     
-    def __init__(self):
-        """初始化运行器"""
+    def __init__(self, config: dict = None):
+        """
+        初始化运行器
+        
+        Args:
+            config: Pipeline配置参数（用于自动发布系统）
+        """
+        self.config = config or {}
+        
         # 初始化API客户端
         self._init_clients()
         
@@ -287,6 +294,100 @@ class StoryPipelineV3Runner:
             for file in final_dir.iterdir():
                 print(f"  - {file.name}")
         print("="*60)
+    
+    def execute(self, params: dict) -> dict:
+        """
+        执行Pipeline - 自动发布系统接口
+        
+        这是与账号驱动自动发布系统集成的标准接口。
+        所有Pipeline都应该实现这个方法。
+        
+        Args:
+            params: 执行参数，包含：
+                - video_id: YouTube视频ID（必需）
+                - account_id: 账号ID（可选）
+                - creator_name: 创作者名称（可选，默认使用account_id）
+                - duration: 视频时长（可选）
+                - 其他Pipeline特定参数
+        
+        Returns:
+            dict: 执行结果，包含：
+                - success: 是否成功
+                - video_path: 生成的视频路径（如果有）
+                - title: 视频标题
+                - description: 视频描述
+                - tags: 视频标签列表
+                - thumbnail: 缩略图路径（如果有）
+                - error: 错误信息（如果失败）
+                - metadata: 其他元数据
+        """
+        try:
+            # 提取参数
+            video_id = params.get('video_id')
+            if not video_id:
+                return {
+                    'success': False,
+                    'error': 'Missing required parameter: video_id'
+                }
+            
+            # 使用account_id作为creator_name，如果没有则使用默认值
+            creator_name = params.get('creator_name') or params.get('account_id', 'default')
+            
+            # 执行Pipeline
+            logger.info(f"[EXECUTE] 通过自动发布系统执行Pipeline: video_id={video_id}, creator={creator_name}")
+            success = self.run(video_id=video_id, creator_name=creator_name)
+            
+            if success:
+                # 构建返回结果
+                cache_dir = Path("story_result") / creator_name / video_id
+                final_dir = cache_dir / "final"
+                
+                result = {
+                    'success': True,
+                    'video_path': None,  # Story Pipeline不生成视频，只生成文本
+                    'output_dir': str(cache_dir),
+                    'metadata': {
+                        'creator_name': creator_name,
+                        'video_id': video_id,
+                        'pipeline_type': 'story_generation_v3'
+                    }
+                }
+                
+                # 读取生成的元数据
+                if final_dir.exists():
+                    # 读取YouTube元数据
+                    metadata_file = final_dir / "youtube_metadata.json"
+                    if metadata_file.exists():
+                        with open(metadata_file, 'r', encoding='utf-8') as f:
+                            metadata = json.load(f)
+                            result['title'] = metadata.get('title', '')
+                            result['description'] = metadata.get('description', '')
+                            result['tags'] = metadata.get('tags', [])
+                    
+                    # 读取故事文件路径
+                    story_file = final_dir / "story.txt"
+                    if story_file.exists():
+                        result['story_path'] = str(story_file)
+                    
+                    # 读取总结文件路径
+                    summary_file = final_dir / "summary_cn.txt"
+                    if summary_file.exists():
+                        result['summary_path'] = str(summary_file)
+                
+                logger.info(f"[SUCCESS] Pipeline执行成功: {result}")
+                return result
+            else:
+                return {
+                    'success': False,
+                    'error': 'Pipeline execution failed'
+                }
+                
+        except Exception as e:
+            logger.error(f"[ERROR] Pipeline执行异常: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
 
 
 def main():

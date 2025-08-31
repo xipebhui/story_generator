@@ -58,6 +58,7 @@ from auth_middleware import (
     generate_api_key, get_invite_code, get_auth_enabled
 )
 from pipeline_video_merge import VideoMergePipeline
+from api_auto_publish import router as auto_publish_router
 
 # 初始化数据库
 db_manager = init_database()
@@ -210,6 +211,9 @@ logger.info(f"YTENGINE_HOST: {os.environ.get('YTENGINE_HOST', 'http://localhost:
 logger.info("=" * 60)
 
 app = FastAPI(title="Video Pipeline API with DB", version="0.2.0")
+
+# 注册自动发布路由
+app.include_router(auto_publish_router)
 
 # 配置CORS
 if os.environ.get('CORS_ENABLED', 'true').lower() == 'true':
@@ -376,11 +380,7 @@ async def run_pipeline_async(task_id: str, request: PipelineRequest):
         update_data = {'progress': progress}
         if stage1.status != StageStatus.SUCCESS:
             error_msg = stage1.error if stage1.error else "故事二创阶段失败"
-            
-            # 检查是否是字幕获取失败
-            if "transcript" in error_msg.lower() or "subtitle" in error_msg.lower():
-                error_msg = f"字幕获取失败: {error_msg}. 您可以手动上传字幕文件后重试。"
-            
+
             update_data['error'] = error_msg
             logger.error(f"[Task {task_id}] 故事二创失败: {error_msg}")
         
@@ -1363,39 +1363,6 @@ async def schedule_publish(request: PublishRequest):
         }
     }
 
-@app.post("/api/publish/create")
-async def create_publish_task(request: PublishRequest):
-    """创建发布任务（保留兼容性）"""
-    results = []
-    
-    for account_id in request.account_ids:
-        publish_task = publish_service.create_publish_task(
-            task_id=request.task_id,
-            account_id=account_id,
-            video_title=request.video_title,
-            video_description=request.video_description,
-            video_tags=request.video_tags,
-            thumbnail_path=request.thumbnail_path,
-            scheduled_time=request.scheduled_time,
-            privacy_status=request.privacy_status
-        )
-        
-        if publish_task:
-            # 如果是定时任务，添加到调度器
-            if request.scheduled_time and request.scheduled_time > get_beijing_now():
-                publish_scheduler.add_task(publish_task['publish_id'], request.scheduled_time)
-            results.append(publish_task)
-        else:
-            results.append({
-                'account_id': account_id,
-                'success': False,
-                'error': '创建发布任务失败'
-            })
-    
-    return {
-        "message": f"创建了 {len(results)} 个发布任务",
-        "publish_tasks": results
-    }
 
 @app.post("/api/publish/execute/{publish_id}")
 async def execute_publish(publish_id: str, background_tasks: BackgroundTasks):

@@ -111,8 +111,8 @@ class PublishService:
                 'account_id': account_id,
                 'video_path': video_path,
                 'video_title': video_title or youtube_metadata.get('title', f"Video {task_id}"),
-                'video_description': '',  # 留空，避免特殊字符问题
-                'video_tags': json.dumps([], ensure_ascii=False),  # 空标签列表
+                'video_description': video_description,  # 留空，避免特殊字符问题
+                'video_tags': json.dumps(video_tags, ensure_ascii=False),  # 空标签列表
                 'thumbnail_path': thumbnail_path or pipeline_task.thumbnail_path,
                 'scheduled_time': scheduled_time,
                 'is_scheduled': scheduled_time is not None,

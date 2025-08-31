@@ -34,38 +34,12 @@ export interface TaskStatusResponse {
   completed_at: string | null;
 }
 
-// YouTube元数据 - 支持新旧两种格式
+// YouTube元数据 - 简化格式
 export interface YouTubeMetadata {
-  // 新格式
-  titles?: {
-    chinese: string[];
-    english: string[];
-  };
-  descriptions?: {
-    chinese: string;
-    english: string;
-  };
-  tags?: {
-    chinese: string[];
-    english: string[];
-    mixed: string[];
-  } | string[]; // 兼容旧格式
-  thumbnail?: {
-    visual_focus?: string;
-    text_overlay?: {
-      chinese: string;
-      english: string;
-    };
-    color_scheme?: string;
-    emotion?: string;
-    // 兼容旧格式
-    text?: string;
-    style?: string;
-  };
-  // 旧格式兼容
-  title?: string;
-  description?: string;
-  category?: string;
+  title?: string;           // 单个悬念标题
+  description?: string;      // 故事描述，末尾包含标签
+  tags?: string[];          // 英文标签数组
+  image_prompt?: string;    // 图片生成提示词，文字用^标记
 }
 
 // 任务结果响应

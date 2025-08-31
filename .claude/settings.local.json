@@ -25,7 +25,13 @@
       "WebSearch",
       "Bash(ffprobe:*)",
       "Bash(npm run dev:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "mcp__sequential-thinking__sequentialthinking",
+      "mcp__playwright__browser_navigate",
+      "Bash(./start_all_services.sh:*)",
+      "Bash(pkill:*)",
+      "Bash(curl:*)",
+      "mcp__playwright__browser_close"
     ],
     "deny": [],
     "additionalDirectories": [

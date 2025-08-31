@@ -39,7 +39,8 @@ import {
   DeleteOutlined,
   LogoutOutlined,
   KeyOutlined,
-  SettingOutlined
+  SettingOutlined,
+  RocketOutlined
 } from '@ant-design/icons';
 import CreateTaskModal from '../../components/CreateTaskModal';
 import TaskDetailDrawer from '../../components/TaskDetailDrawer';
@@ -47,6 +48,7 @@ import PublishModal from '../../components/PublishModal';
 import AccountManager from '../../components/AccountManager';
 import PublishStatus from '../../components/PublishStatus';
 import PublishStatusBadge from '../../components/PublishStatusBadge';
+import AutoPublish from '../../components/AutoPublish';
 import { pipelineAdapter } from '../../services/pipelineAdapter';
 import { Task, TaskStatus } from '../../types/task';
 import { workflows } from '../../config/workflows';
@@ -601,6 +603,16 @@ const Dashboard: React.FC = () => {
                 </Space>
               ),
               children: <AccountManager />
+            },
+            {
+              key: 'autopublish',
+              label: (
+                <Space>
+                  <RocketOutlined />
+                  自动发布
+                </Space>
+              ),
+              children: <AutoPublish />
             }
           ]}
         />

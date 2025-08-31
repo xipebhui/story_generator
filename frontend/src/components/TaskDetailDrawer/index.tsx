@@ -67,8 +67,6 @@ const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
 }) => {
   const [result, setResult] = useState<TaskResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [showChineseTitles, setShowChineseTitles] = useState(false);
-  const [showChineseDesc, setShowChineseDesc] = useState(false);
   const [errorExpanded, setErrorExpanded] = useState(false);  // 控制错误信息展开/折叠
   const [retryLoading, setRetryLoading] = useState<{ [key: string]: boolean }>({});
   const [deleteLoading, setDeleteLoading] = useState<{ [key: string]: boolean }>({});
@@ -649,170 +647,100 @@ const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
               {/* 标题 */}
               <Card 
-                title={
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span><YoutubeOutlined /> 标题</span>
-                    {(result.youtube_metadata as any).titles?.chinese && (
-                      <Button 
-                        size="small" 
-                        onClick={() => setShowChineseTitles(!showChineseTitles)}
-                      >
-                        {showChineseTitles ? '显示英文' : '翻译中文'}
-                      </Button>
-                    )}
-                  </div>
-                } 
+                title={<><YoutubeOutlined /> 标题</>}
                 size="small"
               >
-                {(() => {
-                  const metadata = result.youtube_metadata as any;
-                  if (!metadata || !metadata.titles) {
-                    return <Empty description="暂无标题数据" />;
-                  }
-                  
-                  const titles = showChineseTitles ? metadata.titles.chinese : metadata.titles.english;
-                  return (
-                    <Space direction="vertical" style={{ width: '100%' }}>
-                      {titles?.map((title: string, index: number) => (
-                        <div key={index} style={{ marginBottom: 8 }}>
-                          <Badge count={index + 1} style={{ backgroundColor: '#52c41a' }}>
-                            <Paragraph
-                              copyable={{ text: title }}
-                              style={{ marginBottom: 0, marginLeft: 8 }}
-                            >
-                              {title}
-                            </Paragraph>
-                          </Badge>
-                        </div>
-                      ))}
-                    </Space>
-                  );
-                })()}
+                {result.youtube_metadata?.title ? (
+                  <Paragraph
+                    copyable={{ text: result.youtube_metadata.title }}
+                    style={{ marginBottom: 0 }}
+                  >
+                    {result.youtube_metadata.title}
+                  </Paragraph>
+                ) : (
+                  <Empty description="暂无标题数据" />
+                )}
               </Card>
 
               {/* 描述 */}
               <Card 
-                title={
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>描述</span>
-                    {(result.youtube_metadata as any).descriptions?.chinese && (
-                      <Button 
-                        size="small" 
-                        onClick={() => setShowChineseDesc(!showChineseDesc)}
-                      >
-                        {showChineseDesc ? '显示英文' : '翻译中文'}
-                      </Button>
-                    )}
-                  </div>
-                } 
+                title={<><FileTextOutlined /> 描述</>}
                 size="small"
               >
-                {(() => {
-                  const metadata = result.youtube_metadata as any;
-                  if (!metadata || !metadata.descriptions) {
-                    return <Empty description="暂无描述数据" />;
-                  }
-                  
-                  const description = showChineseDesc ? metadata.descriptions.chinese : metadata.descriptions.english;
-                  return (
-                    <Paragraph
-                      copyable={{ text: description }}
-                      style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}
-                    >
-                      {description}
-                    </Paragraph>
-                  );
-                })()}
+                {result.youtube_metadata?.description ? (
+                  <Paragraph
+                    copyable={{ text: result.youtube_metadata.description }}
+                    style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}
+                  >
+                    {result.youtube_metadata.description}
+                  </Paragraph>
+                ) : (
+                  <Empty description="暂无描述数据" />
+                )}
               </Card>
 
-              {/* 标签 - 只显示英文标签 */}
+              {/* 标签 */}
               <Card title={<><TagsOutlined /> 标签</>} size="small">
-                {(() => {
-                  const metadata = result.youtube_metadata as any;
-                  if (!metadata || !metadata.tags || !metadata.tags.english) {
-                    return <Empty description="暂无标签数据" />;
-                  }
-                  
-                  const englishTags = metadata.tags.english || [];
-                  
-                  return (
-                    <>
-                      <Space wrap>
-                        {englishTags.map((tag: string, index: number) => (
-                          <Tag key={`en-${index}`} color="blue">
-                            {tag}
-                          </Tag>
-                        ))}
-                      </Space>
-                      {englishTags.length > 0 && (
-                        <div style={{ marginTop: 16 }}>
-                          <Button
-                            size="small"
-                            icon={<CopyOutlined />}
-                            onClick={() => copyToClipboard(
-                              englishTags.join(', '),
-                              '标签'
-                            )}
-                          >
-                            复制所有标签
-                          </Button>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
+                {result.youtube_metadata?.tags && result.youtube_metadata.tags.length > 0 ? (
+                  <>
+                    <Space wrap>
+                      {result.youtube_metadata.tags.map((tag: string, index: number) => (
+                        <Tag key={index} color="blue">
+                          {tag}
+                        </Tag>
+                      ))}
+                    </Space>
+                    <div style={{ marginTop: 16 }}>
+                      <Button
+                        size="small"
+                        icon={<CopyOutlined />}
+                        onClick={() => copyToClipboard(
+                          result.youtube_metadata.tags!.join(', '),
+                          '标签'
+                        )}
+                      >
+                        复制所有标签
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <Empty description="暂无标签数据" />
+                )}
               </Card>
 
               {/* 缩略图信息 */}
-              {(() => {
-                const metadata = result.youtube_metadata as any;
-                const thumbnail = metadata.thumbnail;
-                
-                if (!thumbnail) return null;
-                
-                // 新格式的缩略图信息
-                if (thumbnail.visual_focus || thumbnail.text_overlay) {
-                  return (
-                    <Card title={<><PictureOutlined /> 缩略图设计</>} size="small">
-                      <Space direction="vertical" style={{ width: '100%' }}>
-                        {thumbnail.visual_focus && (
-                          <div>
-                            <Text strong>视觉焦点: </Text>
-                            <Text style={{ display: 'block', marginTop: 8 }}>{thumbnail.visual_focus}</Text>
+              {result.youtube_metadata?.image_prompt && (
+                <Card title={<><PictureOutlined /> 缩略图设计</>} size="small">
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <div>
+                      <Text strong>图片生成提示词: </Text>
+                      <Paragraph
+                        copyable={{ text: result.youtube_metadata.image_prompt }}
+                        style={{ marginTop: 8, marginBottom: 0 }}
+                      >
+                        {result.youtube_metadata.image_prompt}
+                      </Paragraph>
+                    </div>
+                    
+                    {(() => {
+                      // 提取 ^...^ 中的文字
+                      const textOverlayMatch = result.youtube_metadata.image_prompt!.match(/\^([^\^]+)\^/);
+                      const textOverlay = textOverlayMatch ? textOverlayMatch[1] : null;
+                      
+                      return textOverlay ? (
+                        <div style={{ marginTop: 16 }}>
+                          <Text strong>封面文字: </Text>
+                          <div style={{ marginTop: 8 }}>
+                            <Tag color="volcano" style={{ fontSize: 14, padding: '4px 12px' }}>
+                              {textOverlay}
+                            </Tag>
                           </div>
-                        )}
-                        
-                        {thumbnail.text_overlay && (
-                          <div style={{ marginTop: 16 }}>
-                            <Text strong>文字叠加: </Text>
-                            <div style={{ marginTop: 8 }}>
-                              <Tag color="blue">英文: {thumbnail.text_overlay.english}</Tag>
-                              <Tag color="red">中文: {thumbnail.text_overlay.chinese}</Tag>
-                            </div>
-                          </div>
-                        )}
-                        
-                        {thumbnail.color_scheme && (
-                          <div style={{ marginTop: 16 }}>
-                            <Text strong>配色方案: </Text>
-                            <Text style={{ display: 'block', marginTop: 8 }}>{thumbnail.color_scheme}</Text>
-                          </div>
-                        )}
-                        
-                        {thumbnail.emotion && (
-                          <div style={{ marginTop: 16 }}>
-                            <Text strong>情感表达: </Text>
-                            <Text style={{ display: 'block', marginTop: 8 }}>{thumbnail.emotion}</Text>
-                          </div>
-                        )}
-                      </Space>
-                    </Card>
-                  );
-                }
-                
-                
-                return null;
-              })()}
+                        </div>
+                      ) : null;
+                    })()}
+                  </Space>
+                </Card>
+              )}
             </Space>
           ) : task.status === 'completed' ? (
             <Empty description="暂无YouTube元数据" />
