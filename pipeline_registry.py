@@ -446,6 +446,101 @@ class PipelineRegistry:
         self._class_cache.clear()
         self._load_cache()
         logger.info("Pipeline缓存已刷新")
+    
+    def update_pipeline(
+        self,
+        pipeline_id: str,
+        update_data: Dict[str, Any]
+    ) -> bool:
+        """
+        更新Pipeline信息
+        
+        Args:
+            pipeline_id: Pipeline ID
+            update_data: 更新数据
+        
+        Returns:
+            是否更新成功
+        """
+        try:
+            with self.db.get_session() as session:
+                pipeline = session.query(PipelineRegistryModel).filter_by(
+                    pipeline_id=pipeline_id
+                ).first()
+                
+                if not pipeline:
+                    logger.error(f"Pipeline不存在: {pipeline_id}")
+                    return False
+                
+                # 更新允许的字段
+                allowed_fields = [
+                    'pipeline_name', 'pipeline_type', 'pipeline_class',
+                    'config_schema', 'supported_platforms', 'version',
+                    'status', 'metadata'
+                ]
+                
+                for field, value in update_data.items():
+                    if field in allowed_fields:
+                        if field == 'metadata':
+                            # 使用 extra_metadata 而不是 metadata
+                            setattr(pipeline, 'extra_metadata', value)
+                        else:
+                            setattr(pipeline, field, value)
+                
+                pipeline.updated_at = datetime.now()
+                session.commit()
+                
+                # 更新缓存
+                if pipeline_id in self._cache:
+                    for field, value in update_data.items():
+                        if field in allowed_fields and hasattr(self._cache[pipeline_id], field):
+                            setattr(self._cache[pipeline_id], field, value)
+                    self._cache[pipeline_id].updated_at = datetime.now()
+                
+                logger.info(f"成功更新Pipeline: {pipeline_id}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"更新Pipeline失败: {e}")
+            return False
+    
+    def delete_pipeline(self, pipeline_id: str) -> bool:
+        """
+        删除Pipeline
+        
+        Args:
+            pipeline_id: Pipeline ID
+        
+        Returns:
+            是否删除成功
+        """
+        try:
+            with self.db.get_session() as session:
+                pipeline = session.query(PipelineRegistryModel).filter_by(
+                    pipeline_id=pipeline_id
+                ).first()
+                
+                if not pipeline:
+                    logger.error(f"Pipeline不存在: {pipeline_id}")
+                    return False
+                
+                # 软删除：将状态设置为DISABLED
+                pipeline.status = PipelineStatus.DISABLED.value
+                pipeline.updated_at = datetime.now()
+                session.commit()
+                
+                # 从缓存中移除
+                if pipeline_id in self._cache:
+                    del self._cache[pipeline_id]
+                if pipeline.pipeline_class in self._class_cache:
+                    del self._class_cache[pipeline.pipeline_class]
+                
+                logger.info(f"成功删除Pipeline: {pipeline_id}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"删除Pipeline失败: {e}")
+            return False
 
 
 # 全局实例

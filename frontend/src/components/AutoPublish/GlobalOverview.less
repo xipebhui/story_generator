@@ -1,0 +1,163 @@
+.global-overview {
+  padding: 24px;
+  background: #f0f2f5;
+  min-height: 100vh;
+
+  .overview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    background: white;
+    padding: 16px 24px;
+    border-radius: 8px;
+
+    h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+    }
+  }
+
+  .stats-cards {
+    margin-bottom: 24px;
+
+    .stat-card {
+      border-radius: 8px;
+      transition: all 0.3s;
+
+      &:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .card-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid #f0f0f0;
+        color: #8c8c8c;
+        font-size: 12px;
+
+        &:hover {
+          color: #1890ff;
+        }
+      }
+    }
+  }
+
+  .charts-row {
+    margin-bottom: 24px;
+
+    .chart-card {
+      border-radius: 8px;
+      height: 300px;
+
+      .success-rate {
+        padding: 20px 0;
+
+        .rate-detail {
+          margin-top: 20px;
+          text-align: center;
+          color: #8c8c8c;
+          font-size: 14px;
+        }
+      }
+
+      .time-distribution {
+        .distribution-item {
+          margin-bottom: 20px;
+          display: flex;
+          align-items: center;
+
+          .time-label {
+            width: 80px;
+            font-size: 14px;
+            color: #595959;
+          }
+
+          .ant-progress {
+            flex: 1;
+          }
+        }
+      }
+    }
+  }
+
+  .lists-row {
+    .list-card {
+      border-radius: 8px;
+      min-height: 400px;
+
+      .ant-card-extra {
+        a {
+          color: #1890ff;
+          font-size: 14px;
+
+          &:hover {
+            text-decoration: underline;
+          }
+        }
+      }
+
+      .account-item {
+        display: flex;
+        align-items: center;
+        width: 100%;
+
+        .rank {
+          width: 30px;
+          height: 30px;
+          background: #f0f0f0;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 600;
+          margin-right: 12px;
+
+          &:first-child {
+            background: #ffd666;
+          }
+        }
+
+        .name {
+          flex: 1;
+          font-size: 14px;
+          color: #262626;
+        }
+
+        .metric {
+          font-size: 14px;
+          color: #8c8c8c;
+        }
+      }
+
+      .task-item {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        gap: 12px;
+
+        .task-id {
+          flex: 1;
+          font-size: 14px;
+          color: #262626;
+          font-family: monospace;
+        }
+
+        .time {
+          font-size: 12px;
+          color: #8c8c8c;
+        }
+      }
+    }
+  }
+}

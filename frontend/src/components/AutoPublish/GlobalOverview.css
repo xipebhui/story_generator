@@ -1,0 +1,345 @@
+.global-overview {
+  padding: 0;
+}
+
+/* 头部区域 */
+.overview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.header-left h3 {
+  color: #262626;
+  font-weight: 600;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 统计卡片区域 */
+.stats-cards {
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.stat-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+.stat-card .ant-statistic-title {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.stat-card .ant-statistic-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stat-card .ant-statistic-content-prefix {
+  font-size: 20px;
+  margin-right: 8px;
+}
+
+.stat-card .ant-statistic-content-value {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.stat-card .ant-statistic-content-suffix {
+  font-size: 14px;
+  color: #666;
+}
+
+.stat-detail {
+  margin-top: 8px;
+  border-top: 1px solid #f0f0f0;
+  padding-top: 8px;
+}
+
+/* 图表区域 */
+.chart-row {
+  margin-bottom: 24px;
+}
+
+.chart-card {
+  border-radius: 8px;
+}
+
+.chart-card .ant-card-head {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.chart-card .ant-card-head-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #262626;
+}
+
+/* 成功率图表 */
+.success-rate-chart {
+  padding: 16px;
+}
+
+.success-rate-chart .ant-progress-line {
+  margin-bottom: 16px;
+}
+
+.success-rate-detail {
+  text-align: center;
+  padding-top: 8px;
+  border-top: 1px solid #f0f0f0;
+}
+
+/* 时间分布图表 */
+.time-distribution-chart {
+  padding: 16px;
+}
+
+.time-slot {
+  margin-bottom: 16px;
+}
+
+.time-slot:last-child {
+  margin-bottom: 0;
+}
+
+.time-slot-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.time-slot-count {
+  margin-top: 4px;
+  text-align: right;
+}
+
+/* 底部区域 */
+.bottom-row {
+  margin-bottom: 0;
+}
+
+.list-card {
+  border-radius: 8px;
+}
+
+.list-card .ant-card-head {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.list-card .ant-card-head-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #262626;
+}
+
+.list-card .ant-card-body {
+  padding: 0;
+}
+
+.list-card .ant-list {
+  border: none;
+}
+
+.list-card .ant-list-item {
+  padding: 16px 24px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.list-card .ant-list-item:last-child {
+  border-bottom: none;
+}
+
+/* 账号列表项 */
+.account-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.account-rank {
+  flex-shrink: 0;
+}
+
+.account-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.account-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.account-name .ant-typography {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-metrics {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.account-metrics .ant-space-item {
+  display: flex;
+  align-items: center;
+}
+
+/* 任务列表项 */
+.task-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.task-status-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.task-status-icon .anticon {
+  font-size: 16px;
+}
+
+.task-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.task-id {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-detail {
+  margin-bottom: 4px;
+}
+
+.task-pipeline,
+.task-account {
+  font-size: 12px;
+}
+
+.task-time {
+  line-height: 1;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .overview-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+  
+  .header-right {
+    justify-content: space-between;
+  }
+  
+  .stats-cards .ant-col {
+    margin-bottom: 12px;
+  }
+  
+  .account-name .ant-typography {
+    max-width: 80px;
+  }
+  
+  .task-id {
+    max-width: 80px;
+  }
+  
+  .account-metrics {
+    gap: 8px;
+  }
+  
+  .account-metrics .ant-space {
+    gap: 8px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .global-overview {
+    padding: 0;
+  }
+  
+  .overview-header {
+    margin-bottom: 16px;
+  }
+  
+  .stats-cards,
+  .chart-row,
+  .bottom-row {
+    margin-bottom: 16px;
+  }
+  
+  .chart-card .ant-card-body,
+  .list-card .ant-card-body {
+    padding: 12px;
+  }
+  
+  .success-rate-chart,
+  .time-distribution-chart {
+    padding: 8px;
+  }
+  
+  .list-card .ant-list-item {
+    padding: 12px 16px;
+  }
+  
+  .account-metrics .ant-space {
+    gap: 4px !important;
+  }
+  
+  .account-metrics .ant-space-item {
+    font-size: 11px;
+  }
+}
+
+/* 加载状态优化 */
+.global-overview .ant-spin-container {
+  min-height: 400px;
+}
+
+.global-overview .ant-spin-spinning {
+  opacity: 0.7;
+}
+
+/* 空状态优化 */
+.ant-empty {
+  padding: 32px 16px;
+}
+
+.ant-empty-description {
+  color: #999;
+}

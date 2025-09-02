@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schema表单配置测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+        .panel {
+            flex: 1;
+            border: 1px solid #ddd;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .info {
+            background: #e6f7ff;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Pipeline Schema 表单配置说明</h1>
+    
+    <div class="info">
+        <strong>新功能说明：</strong>
+        <ul>
+            <li>✅ 使用表单方式配置参数，无需手写JSON</li>
+            <li>✅ 自动组装成标准JSON Schema格式</li>
+            <li>✅ 支持字符串、数字、布尔值等多种类型</li>
+            <li>✅ 支持设置默认值、必填项、数值范围等</li>
+            <li>✅ 支持枚举值设置（下拉选择）</li>
+            <li>✅ 一键生成示例Schema</li>
+        </ul>
+    </div>
+
+    <div class="container">
+        <div class="panel">
+            <h2>表单配置示例</h2>
+            <p>在Pipeline管理界面，点击"创建Pipeline"或"编辑"，切换到"参数配置"标签页，你会看到：</p>
+            
+            <h3>操作步骤：</h3>
+            <ol>
+                <li><strong>添加字段：</strong>点击"添加字段"按钮</li>
+                <li><strong>配置字段属性：</strong>
+                    <ul>
+                        <li>名称：字段的唯一标识（如 video_id）</li>
+                        <li>类型：选择字段类型（字符串/数字/布尔值等）</li>
+                        <li>必填：切换开关设置是否必填</li>
+                        <li>描述：字段的说明文字</li>
+                        <li>默认值：设置字段的默认值</li>
+                    </ul>
+                </li>
+                <li><strong>特殊配置：</strong>
+                    <ul>
+                        <li>数字类型：可设置最小值、最大值</li>
+                        <li>字符串类型：可设置枚举值（逗号分隔）</li>
+                        <li>布尔类型：可设置默认true/false</li>
+                    </ul>
+                </li>
+                <li><strong>生成示例：</strong>点击"生成示例"按钮快速创建示例字段</li>
+            </ol>
+        </div>
+
+        <div class="panel">
+            <h2>自动生成的JSON Schema</h2>
+            <p>系统会自动将表单配置转换为标准的JSON Schema格式：</p>
+            
+            <h3>示例输出：</h3>
+            <pre>{
+  "type": "object",
+  "properties": {
+    "video_id": {
+      "type": "string",
+      "description": "视频ID",
+      "required": true
+    },
+    "image_library": {
+      "type": "string", 
+      "description": "图库名称",
+      "default": "default_library"
+    },
+    "duration_per_image": {
+      "type": "number",
+      "description": "单张图片持续时间（秒）",
+      "default": 3,
+      "minimum": 1,
+      "maximum": 10
+    },
+    "enable_subtitles": {
+      "type": "boolean",
+      "description": "是否启用字幕",
+      "default": true
+    }
+  },
+  "required": ["video_id"]
+}</pre>
+        </div>
+    </div>
+
+    <div style="margin-top: 30px; padding: 20px; background: #f0f0f0; border-radius: 8px;">
+        <h2>特点和优势</h2>
+        <ul>
+            <li>📝 <strong>可视化配置：</strong>通过表单界面配置，无需了解JSON Schema语法</li>
+            <li>🔧 <strong>实时验证：</strong>自动验证配置的合法性</li>
+            <li>🎯 <strong>类型安全：</strong>根据类型自动显示相应的配置选项</li>
+            <li>💾 <strong>向后兼容：</strong>后端接口保持不变，完全兼容现有数据</li>
+            <li>🚀 <strong>快速上手：</strong>提供示例生成功能，一键创建常用配置</li>
+        </ul>
+    </div>
+
+    <div style="margin-top: 20px; text-align: center; color: #666;">
+        <p>访问 <a href="http://localhost:51083/auto-publish?tab=pipeline" target="_blank">http://localhost:51083/auto-publish?tab=pipeline</a> 体验新功能</p>
+    </div>
+</body>
+</html>

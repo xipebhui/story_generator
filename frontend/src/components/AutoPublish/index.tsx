@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Tabs, Card, Button, Space, Tooltip, Badge, Alert } from 'antd';
 import {
   TeamOutlined,
@@ -8,10 +8,17 @@ import {
   DashboardOutlined,
   PlayCircleOutlined,
   PauseCircleOutlined,
-  ReloadOutlined
+  ReloadOutlined,
+  BarChartOutlined,
+  AppstoreOutlined,
+  ControlOutlined
 } from '@ant-design/icons';
+import GlobalOverview from './GlobalOverview';
+import PipelineManagement from './PipelineManagement';
+import PublishConfigManagement from './PublishConfigManagement';
+import TaskExecutionManager from './TaskExecutionManager';
+import AccountGroupManagerEnhanced from './AccountGroupManagerEnhanced';
 import AccountGroupManager from './AccountGroupManager';
-import PublishConfigManager from './PublishConfigManager';
 import ScheduleCalendar from './ScheduleCalendar';
 import StrategyManager from './StrategyManager';
 import ExecutorDashboard from './ExecutorDashboard';
@@ -19,13 +26,34 @@ import ExecutorDashboard from './ExecutorDashboard';
 const { TabPane } = Tabs;
 
 const AutoPublish: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState('overview');
   const [executorStatus, setExecutorStatus] = useState<'running' | 'stopped'>('stopped');
 
   const handleExecutorToggle = () => {
     // 切换执行器状态
     setExecutorStatus(prev => prev === 'running' ? 'stopped' : 'running');
   };
+
+  // 监听全局概览组件的tab切换事件
+  useEffect(() => {
+    const handleTabChange = (event: CustomEvent) => {
+      const { activeTab } = event.detail;
+      setActiveTab(activeTab);
+    };
+
+    window.addEventListener('tabChange', handleTabChange as EventListener);
+    
+    // 从URL参数中获取初始tab
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabFromUrl = urlParams.get('tab');
+    if (tabFromUrl) {
+      setActiveTab(tabFromUrl);
+    }
+
+    return () => {
+      window.removeEventListener('tabChange', handleTabChange as EventListener);
+    };
+  }, []);
 
   return (
     <div style={{ padding: '24px' }}>
@@ -70,13 +98,49 @@ const AutoPublish: React.FC = () => {
           <TabPane
             tab={
               <Space>
-                <DashboardOutlined />
-                执行器仪表盘
+                <BarChartOutlined />
+                全局概览
               </Space>
             }
-            key="dashboard"
+            key="overview"
           >
-            <ExecutorDashboard status={executorStatus} />
+            <GlobalOverview />
+          </TabPane>
+
+          <TabPane
+            tab={
+              <Space>
+                <AppstoreOutlined />
+                Pipeline管理
+              </Space>
+            }
+            key="pipelines"
+          >
+            <PipelineManagement />
+          </TabPane>
+
+          <TabPane
+            tab={
+              <Space>
+                <ControlOutlined />
+                发布配置
+              </Space>
+            }
+            key="configs"
+          >
+            <PublishConfigManagement />
+          </TabPane>
+
+          <TabPane
+            tab={
+              <Space>
+                <PlayCircleOutlined />
+                执行记录
+              </Space>
+            }
+            key="tasks"
+          >
+            <TaskExecutionManager />
           </TabPane>
 
           <TabPane
@@ -88,19 +152,7 @@ const AutoPublish: React.FC = () => {
             }
             key="groups"
           >
-            <AccountGroupManager />
-          </TabPane>
-
-          <TabPane
-            tab={
-              <Space>
-                <SettingOutlined />
-                发布配置
-              </Space>
-            }
-            key="configs"
-          >
-            <PublishConfigManager />
+            <AccountGroupManagerEnhanced />
           </TabPane>
 
           <TabPane
@@ -113,6 +165,18 @@ const AutoPublish: React.FC = () => {
             key="schedule"
           >
             <ScheduleCalendar />
+          </TabPane>
+
+          <TabPane
+            tab={
+              <Space>
+                <DashboardOutlined />
+                执行器仪表盘
+              </Space>
+            }
+            key="dashboard"
+          >
+            <ExecutorDashboard status={executorStatus} />
           </TabPane>
 
           <TabPane
