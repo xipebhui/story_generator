@@ -5,11 +5,15 @@
 负责YouTube账号的初始化和管理
 """
 
+import os
 import logging
+import requests
 from typing import List, Dict, Any, Optional
-from database import get_db_manager, Account
 
 logger = logging.getLogger(__name__)
+
+# YTEngine服务配置 - 与upload服务共用
+YTENGINE_HOST = os.environ.get('YTENGINE_HOST', 'http://localhost:51077')
 
 # 预定义的账号数据
 PRESET_ACCOUNTS = [
@@ -140,50 +144,33 @@ class AccountService:
     """账号管理服务类"""
     
     def __init__(self):
-        self.db = get_db_manager()
-        self._initialized = False
+        # 不再需要数据库管理器，使用与upload服务相同的host
+        self._account_api_url = f"{YTENGINE_HOST}/api/accounts"
+        self._cache = None  # 可以添加缓存机制
+        self._cache_time = None
+        logger.info(f"账号服务初始化，使用API: {self._account_api_url}")
     
     def initialize_accounts(self, force: bool = False) -> int:
         """
-        初始化账号数据
+        初始化账号数据 - 现在只是预加载账号缓存
         
         Args:
-            force: 是否强制重新初始化（会清除现有数据）
+            force: 是否强制刷新缓存
         
         Returns:
-            创建的账号数量
+            获取到的账号数量
         """
-        created_count = 0
-        
-        for account_data in PRESET_ACCOUNTS:
-            try:
-                # 检查账号是否存在
-                existing = self.db.get_account(account_data['account_id'])
-                
-                if existing and not force:
-                    logger.debug(f"账号已存在，跳过: {account_data['account_id']}")
-                    continue
-                
-                if existing and force:
-                    # 更新现有账号
-                    self.db.update_account(account_data['account_id'], account_data)
-                    logger.info(f"更新账号: {account_data['account_id']}")
-                else:
-                    # 创建新账号
-                    self.db.create_account(account_data)
-                    created_count += 1
-                    logger.info(f"创建账号: {account_data['account_id']}")
-                    
-            except Exception as e:
-                logger.error(f"初始化账号失败 {account_data['account_id']}: {e}")
-        
-        self._initialized = True
-        logger.info(f"账号初始化完成，新增 {created_count} 个账号")
-        return created_count
+        try:
+            accounts = self.get_all_accounts(active_only=False)
+            logger.info(f"账号初始化完成，获取到 {len(accounts)} 个账号")
+            return len(accounts)
+        except Exception as e:
+            logger.error(f"初始化账号失败: {e}")
+            return 0
     
     def get_all_accounts(self, active_only: bool = True) -> List[Dict[str, Any]]:
         """
-        获取所有账号
+        获取所有账号 - 从远程API获取
         
         Args:
             active_only: 是否只返回活跃账号
@@ -191,20 +178,59 @@ class AccountService:
         Returns:
             账号列表
         """
-        if not self._initialized:
-            self.initialize_accounts()
-        
-        if active_only:
-            accounts = self.db.get_active_accounts()
-        else:
-            with self.db.get_session() as session:
-                accounts = session.query(Account).all()
-        
-        return [account.to_dict() for account in accounts]
+        try:
+            # 调用新的API接口
+            response = requests.get(self._account_api_url, timeout=10)
+            response.raise_for_status()
+            
+            data = response.json()
+            
+            if not data.get('success', False):
+                logger.error(f"获取账号失败: {data}")
+                return []
+            
+            accounts = data.get('accounts', [])
+            
+            # 转换字段名以适配现有系统
+            converted_accounts = []
+            for acc in accounts:
+                # 只处理活跃账号或者返回所有账号
+                if active_only and acc.get('status') != 'active':
+                    continue
+                
+                converted_account = {
+                    'account_id': acc.get('id', ''),
+                    'account_name': acc.get('displayName', acc.get('channelName', '')),
+                    'profile_id': acc.get('profileId', ''),
+                    'window_number': '',  # 新接口没有这个字段
+                    'description': acc.get('remark', ''),
+                    'is_active': acc.get('status') == 'active',
+                    'channel_url': acc.get('channelUrl', ''),
+                    'email': acc.get('email', ''),
+                    'daily_quota': acc.get('dailyQuota', 50),
+                    'today_uploaded': acc.get('todayUploaded', 0),
+                    'total_uploaded': acc.get('totalUploaded', 0),
+                    'success_count': acc.get('successCount', 0),
+                    'failed_count': acc.get('failedCount', 0),
+                    'created_at': acc.get('createdAt', ''),
+                    'updated_at': acc.get('updatedAt', '')
+                }
+                converted_accounts.append(converted_account)
+            
+            logger.info(f"成功获取 {len(converted_accounts)} 个账号")
+            return converted_accounts
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"调用账号API失败: {e}")
+            # 发生错误时返回空列表或者可以考虑使用缓存的数据
+            return []
+        except Exception as e:
+            logger.error(f"处理账号数据失败: {e}")
+            return []
     
     def get_account_by_id(self, account_id: str) -> Optional[Dict[str, Any]]:
         """
-        根据ID获取账号信息
+        根据ID获取账号信息 - 从远程API获取
         
         Args:
             account_id: 账号ID
@@ -212,12 +238,24 @@ class AccountService:
         Returns:
             账号信息字典，不存在返回None
         """
-        account = self.db.get_account(account_id)
-        return account.to_dict() if account else None
+        try:
+            # 获取所有账号，然后过滤出指定ID的账号
+            all_accounts = self.get_all_accounts(active_only=False)
+            
+            for account in all_accounts:
+                if account.get('account_id') == account_id:
+                    return account
+            
+            logger.warning(f"账号不存在: {account_id}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"获取账号信息失败: {e}")
+            return None
     
     def get_account_by_name(self, account_name: str) -> Optional[Dict[str, Any]]:
         """
-        根据名称获取账号信息
+        根据名称获取账号信息 - 从远程API获取
         
         Args:
             account_name: 账号名称
@@ -225,9 +263,20 @@ class AccountService:
         Returns:
             账号信息字典，不存在返回None
         """
-        with self.db.get_session() as session:
-            account = session.query(Account).filter_by(account_name=account_name).first()
-            return account.to_dict() if account else None
+        try:
+            # 获取所有账号，然后过滤出指定名称的账号
+            all_accounts = self.get_all_accounts(active_only=False)
+            
+            for account in all_accounts:
+                if account.get('account_name') == account_name:
+                    return account
+            
+            logger.warning(f"账号不存在: {account_name}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"获取账号信息失败: {e}")
+            return None
     
     def get_accounts_for_rotation(self, limit: int = 3) -> List[Dict[str, Any]]:
         """
@@ -249,7 +298,7 @@ class AccountService:
     
     def update_account_status(self, account_id: str, is_active: bool) -> bool:
         """
-        更新账号状态
+        更新账号状态 - 此功能需要远程API支持
         
         Args:
             account_id: 账号ID
@@ -258,12 +307,14 @@ class AccountService:
         Returns:
             更新是否成功
         """
-        result = self.db.update_account(account_id, {'is_active': is_active})
-        return result is not None
+        logger.warning(f"账号状态更新功能暂不支持（需要远程API支持）: {account_id}")
+        # 如果远程API支持更新，可以在这里实现
+        # 目前返回False表示不支持
+        return False
     
     def create_account(self, account_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
-        创建新账号
+        创建新账号 - 此功能需要远程API支持
         
         Args:
             account_data: 账号数据，包含:
@@ -277,36 +328,14 @@ class AccountService:
         Returns:
             创建成功返回账号信息，失败返回None
         """
-        try:
-            # 检查必需字段
-            required_fields = ['account_id', 'account_name', 'profile_id']
-            for field in required_fields:
-                if field not in account_data:
-                    logger.error(f"创建账号缺少必需字段: {field}")
-                    return None
-            
-            # 检查账号是否已存在
-            existing = self.db.get_account(account_data['account_id'])
-            if existing:
-                logger.warning(f"账号已存在: {account_data['account_id']}")
-                return None
-            
-            # 设置默认值
-            account_data.setdefault('is_active', True)
-            account_data.setdefault('description', f"账号 {account_data['account_name']}")
-            
-            # 创建账号
-            account = self.db.create_account(account_data)
-            logger.info(f"成功创建账号: {account_data['account_id']}")
-            return account.to_dict()
-            
-        except Exception as e:
-            logger.error(f"创建账号失败: {e}")
-            return None
+        logger.warning("账号创建功能暂不支持（需要远程API支持）")
+        # 如果远程API支持创建，可以在这里实现
+        # 目前返回None表示不支持
+        return None
     
     def delete_account(self, account_id: str) -> bool:
         """
-        删除账号
+        删除账号 - 此功能需要远程API支持
         
         Args:
             account_id: 账号ID
@@ -314,20 +343,14 @@ class AccountService:
         Returns:
             删除成功返回True，失败返回False
         """
-        try:
-            result = self.db.delete_account(account_id)
-            if result:
-                logger.info(f"成功删除账号: {account_id}")
-            else:
-                logger.warning(f"删除账号失败，账号不存在: {account_id}")
-            return result
-        except Exception as e:
-            logger.error(f"删除账号异常: {e}")
-            return False
+        logger.warning(f"账号删除功能暂不支持（需要远程API支持）: {account_id}")
+        # 如果远程API支持删除，可以在这里实现
+        # 目前返回False表示不支持
+        return False
     
     def get_account_statistics(self, account_id: str) -> Dict[str, Any]:
         """
-        获取账号统计信息
+        获取账号统计信息 - 从远程API获取的账号数据中提取
         
         Args:
             account_id: 账号ID
@@ -335,36 +358,45 @@ class AccountService:
         Returns:
             统计信息字典
         """
-        with self.db.get_session() as session:
-            from database import PublishTask
+        try:
+            # 获取账号信息
+            account = self.get_account_by_id(account_id)
             
-            # 总发布数
-            total = session.query(PublishTask)\
-                .filter_by(account_id=account_id)\
-                .count()
+            if not account:
+                return {
+                    'account_id': account_id,
+                    'total_publish': 0,
+                    'success': 0,
+                    'failed': 0,
+                    'pending': 0,
+                    'success_rate': 0
+                }
             
-            # 成功数
-            success = session.query(PublishTask)\
-                .filter_by(account_id=account_id, status='success')\
-                .count()
-            
-            # 失败数
-            failed = session.query(PublishTask)\
-                .filter_by(account_id=account_id, status='failed')\
-                .count()
-            
-            # 待发布数
-            pending = session.query(PublishTask)\
-                .filter_by(account_id=account_id, status='pending')\
-                .count()
+            # 从账号信息中提取统计数据
+            total = account.get('total_uploaded', 0)
+            success = account.get('success_count', 0)
+            failed = account.get('failed_count', 0)
             
             return {
                 'account_id': account_id,
                 'total_publish': total,
                 'success': success,
                 'failed': failed,
-                'pending': pending,
-                'success_rate': (success / total * 100) if total > 0 else 0
+                'pending': 0,  # 新API没有pending信息
+                'success_rate': (success / total * 100) if total > 0 else 0,
+                'daily_quota': account.get('daily_quota', 50),
+                'today_uploaded': account.get('today_uploaded', 0)
+            }
+            
+        except Exception as e:
+            logger.error(f"获取账号统计信息失败: {e}")
+            return {
+                'account_id': account_id,
+                'total_publish': 0,
+                'success': 0,
+                'failed': 0,
+                'pending': 0,
+                'success_rate': 0
             }
 
 
