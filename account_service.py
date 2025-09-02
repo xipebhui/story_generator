@@ -199,6 +199,7 @@ class AccountService:
                     continue
                 
                 converted_account = {
+                    # 核心字段（保持兼容性）
                     'account_id': acc.get('id', ''),
                     'account_name': acc.get('displayName', acc.get('channelName', '')),
                     'profile_id': acc.get('profileId', ''),
@@ -206,14 +207,32 @@ class AccountService:
                     'description': acc.get('remark', ''),
                     'is_active': acc.get('status') == 'active',
                     'channel_url': acc.get('channelUrl', ''),
+                    
+                    # 原始字段（前端需要显示的）
+                    'display_name': acc.get('displayName', ''),  # YouTube账号名
+                    'remark': acc.get('remark', ''),  # 账号说明
+                    'tags': acc.get('tags', []),  # 账号标签
+                    'status': acc.get('status', 'inactive'),  # 原始状态
+                    
+                    # 统计字段
                     'email': acc.get('email', ''),
                     'daily_quota': acc.get('dailyQuota', 50),
                     'today_uploaded': acc.get('todayUploaded', 0),
                     'total_uploaded': acc.get('totalUploaded', 0),
                     'success_count': acc.get('successCount', 0),
                     'failed_count': acc.get('failedCount', 0),
+                    
+                    # 时间字段
                     'created_at': acc.get('createdAt', ''),
-                    'updated_at': acc.get('updatedAt', '')
+                    'updated_at': acc.get('updatedAt', ''),
+                    
+                    # 额外字段
+                    'channel_name': acc.get('channelName', ''),
+                    'proxy_id': acc.get('proxyId', ''),
+                    'cookies_valid': acc.get('cookiesValid', False),
+                    'quota_reset_at': acc.get('quotaResetAt', ''),
+                    'last_active': acc.get('lastActive', ''),
+                    'next_keep_alive': acc.get('nextKeepAlive', '')
                 }
                 converted_accounts.append(converted_account)
             

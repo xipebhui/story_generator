@@ -50,10 +50,10 @@ const AccountManager: React.FC<AccountManagerProps> = ({
       // 优先从后端加载真实账号
       const backendAccounts = await backendAccountService.getAccounts();
       
-      // 转换为前端账号格式
+      // 转换为前端账号格式，包含所有新字段
       const formattedAccounts = backendAccounts.map(acc => ({
         id: acc.account_id,
-        name: acc.account_name,
+        name: acc.account_name || acc.display_name,
         youtube_account: acc.channel_url?.replace('https://youtube.com/', '').replace('https://www.youtube.com/', ''),
         youtube_channel_id: acc.channel_id,
         bitbrowser_name: acc.profile_id || acc.account_id,
@@ -61,7 +61,19 @@ const AccountManager: React.FC<AccountManagerProps> = ({
         window_number: acc.window_number,
         description: acc.description,
         created_at: acc.created_at || new Date().toISOString(),
-        updated_at: acc.updated_at || new Date().toISOString()
+        updated_at: acc.updated_at || new Date().toISOString(),
+        // 新增字段映射
+        display_name: acc.display_name,
+        remark: acc.remark,
+        tags: acc.tags || [],
+        today_uploaded: acc.today_uploaded || 0,
+        success_count: acc.success_count || 0,
+        failed_count: acc.failed_count || 0,
+        total_uploaded: acc.total_uploaded || 0,
+        daily_quota: acc.daily_quota || 50,
+        email: acc.email,
+        channel_url: acc.channel_url,
+        profile_id: acc.profile_id
       }));
       
       setAccounts(formattedAccounts);
@@ -173,35 +185,49 @@ const AccountManager: React.FC<AccountManagerProps> = ({
     {
       title: '账号',
       key: 'account',
-      width: 120,
+      width: 150,
       render: (_, record) => (
-        <Space>
-          <Avatar icon={<UserOutlined />} />
-          <div>
-            <div style={{ fontWeight: 500 }}>{record.name}</div>
+        <Space direction="vertical" size={0}>
+          <div style={{ fontWeight: 500 }}>{record.display_name || record.name}</div>
+          {record.remark && <div style={{ fontSize: 12, color: '#666' }}>{record.remark}</div>}
+        </Space>
+      )
+    },
+    {
+      title: '标签',
+      dataIndex: 'tags',
+      key: 'tags',
+      width: 120,
+      render: (tags: string[]) => (
+        <>
+          {tags && tags.map(tag => (
+            <Tag key={tag} color="blue">{tag}</Tag>
+          ))}
+        </>
+      )
+    },
+    {
+      title: '今日/限额',
+      key: 'quota',
+      width: 100,
+      render: (_, record) => (
+        <Space direction="vertical" size={0}>
+          <div>{record.today_uploaded || 0}/{record.daily_quota || 50}</div>
+          <div style={{ fontSize: 12, color: record.today_uploaded >= (record.daily_quota || 50) ? '#ff4d4f' : '#52c41a' }}>
+            剩余: {(record.daily_quota || 50) - (record.today_uploaded || 0)}
           </div>
         </Space>
       )
     },
     {
-      title: 'YouTube账号',
-      dataIndex: 'youtube_account',
-      key: 'youtube_account',
-      render: (text) => (
+      title: '成功/失败',
+      key: 'stats',
+      width: 100,
+      render: (_, record) => (
         <Space>
-          <YoutubeOutlined style={{ color: '#FF0000' }} />
-          {text}
-        </Space>
-      )
-    },
-    {
-      title: '比特浏览器',
-      dataIndex: 'bitbrowser_name',
-      key: 'bitbrowser_name',
-      render: (text) => (
-        <Space>
-          <ChromeOutlined style={{ color: '#4285F4' }} />
-          {text}
+          <span style={{ color: '#52c41a' }}>{record.success_count || 0}</span>
+          /
+          <span style={{ color: '#ff4d4f' }}>{record.failed_count || 0}</span>
         </Space>
       )
     },

@@ -4,10 +4,25 @@ export interface Account {
   id: string;
   name: string;                    // 账号名称
   youtube_account: string;         // YouTube账号
-  bitbrowser_name: string;        // 比特浏览器名称
+  bitbrowser_name: string;        // 比特浏览器名称（profile_id）
   status: 'active' | 'inactive';  // 账号状态
   created_at: string;
   updated_at: string;
+  
+  // 新增字段
+  display_name?: string;           // YouTube显示名称
+  remark?: string;                 // 账号说明
+  tags?: string[];                 // 账号标签
+  today_uploaded?: number;         // 今日已上传
+  success_count?: number;          // 成功次数
+  failed_count?: number;           // 失败次数
+  total_uploaded?: number;         // 总上传数
+  daily_quota?: number;            // 每日限额
+  email?: string;                  // 邮箱
+  channel_url?: string;            // 频道URL
+  profile_id?: string;             // 比特浏览器profile ID
+  description?: string;            // 描述
+  window_number?: string;          // 窗口序号
 }
 
 export interface PublishTask {
