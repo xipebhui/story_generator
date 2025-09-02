@@ -173,7 +173,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
               >
                 {accounts.map(account => (
                   <Select.Option key={account.account_name} value={account.account_name}>
-                    {account.account_name}
+                    {account.display_name || account.account_name}
                   </Select.Option>
                 ))}
               </Select>

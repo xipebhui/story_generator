@@ -91,6 +91,7 @@ const PublishModal: React.FC<PublishModalProps> = ({
       const formattedAccounts = backendAccounts.map((acc: any) => ({
         id: acc.account_id,
         name: acc.account_name,
+        display_name: acc.display_name, // 添加display_name字段
         youtube_account: acc.account_name, // 使用 account_name 作为 youtube_account
         youtube_channel_id: acc.channel_url || '', // 使用 channel_url 或空字符串
         bitbrowser_name: acc.profile_id || acc.account_id, // 使用 profile_id 或 account_id
@@ -287,7 +288,7 @@ const PublishModal: React.FC<PublishModalProps> = ({
           >
             {accounts.map(account => (
               <Option key={account.id} value={account.id}>
-                {account.name}
+                {account.display_name || account.name}
               </Option>
             ))}
           </Select>
