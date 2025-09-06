@@ -28,7 +28,8 @@ import {
   ClockCircleOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
-  ExclamationCircleOutlined
+  ExclamationCircleOutlined,
+  ThunderboltOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { autoPublishService } from '../../services/autoPublish';
@@ -182,6 +183,27 @@ const PublishConfigManagement: React.FC = () => {
     setDrawerVisible(true);
   };
 
+  // 手动触发配置
+  const handleManualTrigger = async (config: PublishConfig) => {
+    try {
+      // 显示确认对话框
+      message.loading('正在触发任务...');
+      
+      // 调用手动触发API
+      const response = await autoPublishService.manualTriggerConfig(config.config_id);
+      
+      if (response.success) {
+        message.success(`成功触发配置: ${config.config_name}`);
+        // 刷新列表以显示新的任务
+        loadConfigs();
+      } else {
+        message.error('触发失败: ' + (response.message || '未知错误'));
+      }
+    } catch (error: any) {
+      message.error('手动触发失败: ' + (error.message || '网络错误'));
+    }
+  };
+
   // 获取触发类型标签
   const getTriggerTypeTag = (type: string) => {
     const typeMap: Record<string, { color: string; text: string; icon: any }> = {
@@ -300,6 +322,16 @@ const PublishConfigManagement: React.FC = () => {
       key: 'action',
       render: (_, record) => (
         <Space size="small">
+          {record.trigger_type === 'manual' && record.is_active && (
+            <Tooltip title="手动触发">
+              <Button 
+                type="primary" 
+                icon={<ThunderboltOutlined />} 
+                size="small"
+                onClick={() => handleManualTrigger(record)} 
+              />
+            </Tooltip>
+          )}
           <Tooltip title="查看详情">
             <Button type="text" icon={<EyeOutlined />} onClick={() => handleViewDetail(record)} />
           </Tooltip>

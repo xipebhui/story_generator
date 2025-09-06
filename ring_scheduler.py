@@ -571,6 +571,122 @@ class RingScheduler:
         except Exception as e:
             logger.error(f"清理旧槽位失败: {e}")
             return 0
+    
+    def generate_interval_slots(
+        self,
+        config_id: str,
+        account_id: str,
+        interval_hours: int,
+        config_index: int = 0,
+        total_configs: int = 1,
+        days_ahead: int = 7
+    ) -> List[TimeSlot]:
+        """
+        生成基于间隔的调度槽位，支持多配置均匀分布
+        
+        Args:
+            config_id: 配置ID
+            account_id: 账号ID
+            interval_hours: 间隔小时数
+            config_index: 当前配置的索引（用于计算偏移）
+            total_configs: 总配置数（用于计算偏移）
+            days_ahead: 生成多少天的槽位
+        
+        Returns:
+            时间槽列表
+        """
+        slots = []
+        
+        # 计算时间偏移量，让多个配置的执行时间均匀分布
+        if total_configs > 1:
+            # 偏移量 = (索引 * 间隔) / 总数
+            offset_hours = (config_index * interval_hours) / total_configs
+        else:
+            offset_hours = 0
+        
+        logger.info(f"生成间隔槽位: 配置{config_index + 1}/{total_configs}, 间隔{interval_hours}小时, 偏移{offset_hours:.1f}小时")
+        
+        # 计算起始时间
+        now = datetime.now()
+        # 起始时间：今天的0点 + 偏移量
+        start_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        start_time += timedelta(hours=offset_hours)
+        
+        # 如果起始时间已过，调整到下一个槽位
+        if start_time < now:
+            # 计算需要跳过多少个间隔
+            time_passed = (now - start_time).total_seconds() / 3600  # 转换为小时
+            intervals_to_skip = int(time_passed / interval_hours) + 1
+            start_time += timedelta(hours=intervals_to_skip * interval_hours)
+        
+        # 生成槽位
+        current_time = start_time
+        end_time = now + timedelta(days=days_ahead)
+        slot_index = 0
+        
+        while current_time < end_time:
+            # 添加少量随机抖动（±5分钟），避免完全同时执行
+            jitter = random.randint(-self.jitter_minutes, self.jitter_minutes)
+            slot_time = current_time + timedelta(minutes=jitter)
+            
+            slot = TimeSlot(
+                slot_id=None,
+                config_id=config_id,
+                account_id=account_id,
+                slot_date=slot_time.date(),
+                slot_time=slot_time.time(),
+                slot_index=slot_index,
+                status=SlotStatus.PENDING.value,
+                metadata={
+                    "interval_hours": interval_hours,
+                    "config_index": config_index,
+                    "total_configs": total_configs
+                }
+            )
+            slots.append(slot)
+            
+            # 下一个槽位
+            current_time += timedelta(hours=interval_hours)
+            slot_index += 1
+        
+        logger.info(f"为配置 {config_id} 生成了 {len(slots)} 个间隔槽位")
+        return slots
+    
+    def get_existing_interval_configs(self, interval_hours: int) -> int:
+        """
+        获取已存在的相同间隔的配置数量
+        
+        Args:
+            interval_hours: 间隔小时数
+        
+        Returns:
+            配置数量
+        """
+        try:
+            with self.db.get_session() as session:
+                # 查询metadata中包含指定间隔的槽位
+                result = session.query(RingScheduleSlotModel.config_id).filter(
+                    RingScheduleSlotModel.status == SlotStatus.PENDING.value
+                ).distinct().all()
+                
+                count = 0
+                for row in result:
+                    # 检查是否是间隔调度
+                    slots = session.query(RingScheduleSlotModel).filter(
+                        RingScheduleSlotModel.config_id == row[0],
+                        RingScheduleSlotModel.status == SlotStatus.PENDING.value
+                    ).first()
+                    
+                    if slots and slots.extra_metadata:
+                        metadata = slots.extra_metadata
+                        if isinstance(metadata, dict) and metadata.get('interval_hours') == interval_hours:
+                            count += 1
+                
+                return count
+                
+        except Exception as e:
+            logger.error(f"获取间隔配置数量失败: {e}")
+            return 0
 
 
 # 全局实例

@@ -208,7 +208,7 @@ class YouTubeAPIClient:
             self.logger.error(f"❌ 频道详情获取失败: {e}")
             raise
 
-    @retry((HttpError, ssl.SSLError, ssl.SSLEOFError), tries=3, delay=2, backoff=2)
+    #@retry((HttpError, ssl.SSLError, ssl.SSLEOFError), tries=3, delay=2, backoff=2)
     def get_channel_activity(self, channel_id: str, published_after: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
         """获取频道活动"""
         self.logger.info(f"📈 获取频道活动: {channel_id}")
@@ -543,9 +543,10 @@ if __name__ == '__main__':
     
     
     client = YouTubeAPIClient()
-    
+    print(client.api_keys)
     # 测试获取字幕
     video_info = client.get_video_details(["15uh5XyxXho"])
-    result = client.get_video_comments("15uh5XyxXho",5)
+    print(video_info)
+    result = client.get_channel_activity("UCH9vY_kzBKhDDrpMavKxTIQ")
     if result:
         print(result)

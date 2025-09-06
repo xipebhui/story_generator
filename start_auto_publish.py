@@ -21,8 +21,8 @@ load_env_file()
 
 # 配置日志
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.DEBUG,  # 改为DEBUG级别以查看详细日志
+    format='%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
         logging.FileHandler('auto_publish.log', encoding='utf-8')
@@ -94,29 +94,57 @@ async def start_executor():
     except asyncio.CancelledError:
         pass
 
-async def start_monitor():
-    """启动平台监控"""
-    global monitor
-    logger.info("启动平台监控器...")
-    monitor = get_platform_monitor()
+async def start_slot_generator():
+    """启动槽位生成器（每小时检查一次）"""
+    logger.info("启动槽位生成器...")
+    last_run_hour = -1
     
-    # 创建监控任务
-    monitor_task = asyncio.create_task(monitor.start_monitoring())
-    
-    # 等待监控运行
     while running:
-        await asyncio.sleep(1)
-    
-    # 停止监控
-    logger.info("停止监控器...")
-    await monitor.stop_monitoring()
-    
-    # 取消监控任务
-    monitor_task.cancel()
-    try:
-        await monitor_task
-    except asyncio.CancelledError:
-        pass
+        try:
+            current_hour = datetime.now().hour
+            
+            # 每天凌晨2点生成槽位
+            if current_hour == 2 and current_hour != last_run_hour:
+                logger.info("开始每日槽位生成...")
+                from generate_daily_slots import process_daily_configs
+                try:
+                    process_daily_configs()
+                    logger.info("槽位生成完成")
+                except Exception as e:
+                    logger.error(f"槽位生成失败: {e}")
+                
+                last_run_hour = current_hour
+            
+            # 每小时检查一次
+            await asyncio.sleep(3600)
+            
+        except Exception as e:
+            logger.error(f"槽位生成器异常: {e}")
+            await asyncio.sleep(60)
+
+# async def start_monitor():
+#     """启动平台监控"""
+#     global monitor
+#     logger.info("启动平台监控器...")
+#     monitor = get_platform_monitor()
+#
+#     # 创建监控任务
+#     monitor_task = asyncio.create_task(monitor.start_monitoring())
+#
+#     # 等待监控运行
+#     while running:
+#         await asyncio.sleep(1)
+#
+#     # 停止监控
+#     logger.info("停止监控器...")
+#     await monitor.stop_monitoring()
+#
+#     # 取消监控任务
+#     monitor_task.cancel()
+#     try:
+#         await monitor_task
+#     except asyncio.CancelledError:
+#         pass
 
 async def main():
     """主函数"""
@@ -132,10 +160,19 @@ async def main():
         # 初始化服务
         await initialize_services()
         
+        # 在启动时生成一次槽位
+        logger.info("生成每日定时任务槽位...")
+        from generate_daily_slots import process_daily_configs
+        try:
+            process_daily_configs()
+        except Exception as e:
+            logger.error(f"生成槽位失败: {e}")
+        
         # 创建并发任务
         tasks = [
             asyncio.create_task(start_executor()),
-            asyncio.create_task(start_monitor())
+            asyncio.create_task(start_slot_generator()),
+            # asyncio.create_task(start_monitor())
         ]
         
         # 等待所有任务完成

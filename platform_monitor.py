@@ -600,8 +600,8 @@ class PlatformMonitor:
             async with adapter:
                 if monitor_type == MonitorType.CHANNEL.value:
                     return await adapter.fetch_channel_videos(target, max_results)
-                elif monitor_type == MonitorType.TRENDING.value:
-                    return await adapter.fetch_trending_videos(target, max_results)
+                # elif monitor_type == MonitorType.TRENDING.value:
+                #     return await adapter.fetch_trending_videos(target, max_results)
                 elif monitor_type == MonitorType.KEYWORD.value:
                     return await adapter.search_videos(target, max_results)
                 else:

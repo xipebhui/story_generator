@@ -180,6 +180,7 @@ class Account(Base):
             'channel_url': self.channel_url,
             'window_number': self.window_number,
             'description': self.description,
+            'platform': 'youtube',  # Default platform for YouTube accounts
             'is_active': self.is_active,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None

@@ -80,12 +80,20 @@ class PipelineRegistry:
                 ).all()
                 
                 for p in pipelines:
+                    # 解析 config_schema
+                    config_schema = p.config_schema or {}
+                    if isinstance(config_schema, str):
+                        try:
+                            config_schema = json.loads(config_schema)
+                        except:
+                            config_schema = {}
+                    
                     metadata = PipelineMetadata(
                         pipeline_id=p.pipeline_id,
                         pipeline_name=p.pipeline_name,
                         pipeline_type=p.pipeline_type,
                         pipeline_class=p.pipeline_class,
-                        config_schema=p.config_schema or {},
+                        config_schema=config_schema,
                         supported_platforms=p.supported_platforms or ["youtube"],
                         version=p.version,
                         status=p.status,
@@ -142,6 +150,11 @@ class PipelineRegistry:
                     logger.error(f"无法加载Pipeline类: {pipeline_class}")
                     return False
                 
+                # 添加日志记录config_schema
+                logger.info(f"准备保存Pipeline {pipeline_id}")
+                logger.info(f"config_schema类型: {type(config_schema)}")
+                logger.info(f"config_schema内容: {json.dumps(config_schema, indent=2, ensure_ascii=False) if config_schema else 'None'}")
+                
                 # 创建新记录
                 pipeline = PipelineRegistryModel(
                     pipeline_id=pipeline_id,
@@ -157,6 +170,13 @@ class PipelineRegistry:
                 
                 session.add(pipeline)
                 session.commit()
+                
+                # 验证保存结果
+                saved = session.query(PipelineRegistryModel).filter_by(
+                    pipeline_id=pipeline_id
+                ).first()
+                if saved:
+                    logger.info(f"Pipeline已保存到数据库，config_schema: {saved.config_schema}")
                 
                 # 更新缓存
                 self._cache[pipeline_id] = PipelineMetadata(
@@ -200,6 +220,10 @@ class PipelineRegistry:
                 ).first()
                 
                 if pipeline:
+                    # 添加日志
+                    logger.debug(f"从数据库读取Pipeline {pipeline_id}")
+                    logger.debug(f"config_schema: {pipeline.config_schema}")
+                    
                     metadata = PipelineMetadata(
                         pipeline_id=pipeline.pipeline_id,
                         pipeline_name=pipeline.pipeline_name,
@@ -313,7 +337,18 @@ class PipelineRegistry:
         
         try:
             # 创建实例
-            instance = pipeline_class(**config)
+            # 检查构造函数签名，决定如何传递参数
+            import inspect
+            sig = inspect.signature(pipeline_class.__init__)
+            params = list(sig.parameters.keys())
+            
+            # 如果构造函数只接受 self 和 config 参数，则传递整个字典
+            if len(params) == 2 and 'config' in params:
+                instance = pipeline_class(config=config)
+            else:
+                # 否则尝试展开参数
+                instance = pipeline_class(**config)
+            
             logger.info(f"成功创建Pipeline实例: {pipeline_id}")
             return instance
             
@@ -402,22 +437,60 @@ class PipelineRegistry:
             return True
         
         try:
-            # 简单验证必需字段
-            for field, field_type in schema.items():
-                if field not in config:
-                    logger.error(f"缺少必需字段: {field}")
-                    return False
+            logger.debug(f"验证配置 - Schema: {schema}, Config: {config}")
+            
+            # 处理 JSON Schema 格式
+            if 'type' in schema and schema.get('type') == 'object' and 'properties' in schema:
+                # 这是标准的 JSON Schema 格式
+                properties = schema.get('properties', {})
+                required_fields = schema.get('required', [])
                 
-                # 简单类型检查
-                if field_type == "string" and not isinstance(config[field], str):
-                    logger.error(f"字段类型错误: {field} 应为 string")
-                    return False
-                elif field_type == "integer" and not isinstance(config[field], int):
-                    logger.error(f"字段类型错误: {field} 应为 integer")
-                    return False
-                elif field_type == "array" and not isinstance(config[field], list):
-                    logger.error(f"字段类型错误: {field} 应为 array")
-                    return False
+                # 验证必需字段
+                for field in required_fields:
+                    if field not in config:
+                        logger.error(f"缺少必需字段: {field}")
+                        return False
+                
+                # 验证字段类型
+                for field, field_schema in properties.items():
+                    if field in config:
+                        value = config[field]
+                        field_type = field_schema.get('type')
+                        
+                        if field_type == 'string' and not isinstance(value, str):
+                            logger.error(f"字段类型错误: {field} 应为 string")
+                            return False
+                        elif field_type == 'integer' and not isinstance(value, int):
+                            logger.error(f"字段类型错误: {field} 应为 integer")
+                            return False
+                        elif field_type == 'array' and not isinstance(value, list):
+                            logger.error(f"字段类型错误: {field} 应为 array")
+                            return False
+                        elif field_type == 'boolean' and not isinstance(value, bool):
+                            logger.error(f"字段类型错误: {field} 应为 boolean")
+                            return False
+                    elif field_schema.get('required', False):
+                        # 处理旧格式中的 required 字段
+                        logger.error(f"缺少必需字段: {field}")
+                        return False
+                
+            else:
+                # 兼容旧的简单格式
+                for field, field_type in schema.items():
+                    if field not in config:
+                        logger.error(f"缺少必需字段: {field}")
+                        return False
+                    
+                    # 简单类型检查
+                    if field_type == "string" and not isinstance(config[field], str):
+                        logger.error(f"字段类型错误: {field} 应为 string")
+                        return False
+                    elif field_type == "integer" and not isinstance(config[field], int):
+                        logger.error(f"字段类型错误: {field} 应为 integer")
+                        return False
+                    elif field_type == "array" and not isinstance(config[field], list):
+                        logger.error(f"字段类型错误: {field} 应为 array")
+                        return False
             
             return True
             
@@ -506,13 +579,50 @@ class PipelineRegistry:
     
     def delete_pipeline(self, pipeline_id: str) -> bool:
         """
-        删除Pipeline
+        删除Pipeline（物理删除）
         
         Args:
             pipeline_id: Pipeline ID
         
         Returns:
             是否删除成功
+        """
+        try:
+            with self.db.get_session() as session:
+                pipeline = session.query(PipelineRegistryModel).filter_by(
+                    pipeline_id=pipeline_id
+                ).first()
+                
+                if not pipeline:
+                    logger.error(f"Pipeline不存在: {pipeline_id}")
+                    return False
+                
+                # 物理删除：从数据库中删除记录
+                session.delete(pipeline)
+                session.commit()
+                
+                # 从缓存中移除
+                if pipeline_id in self._cache:
+                    del self._cache[pipeline_id]
+                if pipeline.pipeline_class in self._class_cache:
+                    del self._class_cache[pipeline.pipeline_class]
+                
+                logger.info(f"成功删除Pipeline: {pipeline_id}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"删除Pipeline失败: {e}")
+            return False
+    
+    def disable_pipeline(self, pipeline_id: str) -> bool:
+        """
+        禁用Pipeline（软删除）
+        
+        Args:
+            pipeline_id: Pipeline ID
+        
+        Returns:
+            是否禁用成功
         """
         try:
             with self.db.get_session() as session:
@@ -532,14 +642,12 @@ class PipelineRegistry:
                 # 从缓存中移除
                 if pipeline_id in self._cache:
                     del self._cache[pipeline_id]
-                if pipeline.pipeline_class in self._class_cache:
-                    del self._class_cache[pipeline.pipeline_class]
                 
-                logger.info(f"成功删除Pipeline: {pipeline_id}")
+                logger.info(f"成功禁用Pipeline: {pipeline_id}")
                 return True
                 
         except Exception as e:
-            logger.error(f"删除Pipeline失败: {e}")
+            logger.error(f"禁用Pipeline失败: {e}")
             return False
 
 
@@ -583,3 +691,40 @@ def create_pipeline_instance(
     """创建Pipeline实例便捷函数"""
     registry = get_pipeline_registry()
     return registry.create_instance(pipeline_id, config)
+
+
+def register_story_full_pipeline():
+    """注册StoryFullPipeline到注册表"""
+    config_schema = {
+        "enable_story": "boolean",
+        "enable_tts": "boolean", 
+        "enable_draft": "boolean",
+        "enable_video_export": "boolean",
+        "enable_publish": "boolean",
+        "strict_mode": "boolean",
+        "story_required": "boolean",
+        "tts_required": "boolean",
+        "draft_required": "boolean",
+        "cache_strategy": "string",
+        "story_config": "object",
+        "tts_config": "object",
+        "draft_config": "object",
+        "video_config": "object",
+        "publish_config": "object"
+    }
+    
+    return register_pipeline(
+        pipeline_id="story_full_pipeline",
+        pipeline_name="完整故事二创Pipeline",
+        pipeline_type="story_generation",
+        pipeline_class="pipelines.story_full_pipeline.StoryFullPipeline",
+        config_schema=config_schema,
+        supported_platforms=["youtube"],
+        version="1.0.0",
+        metadata={
+            "description": "包含故事生成、TTS、草稿生成、视频导出和YouTube发布的完整Pipeline",
+            "author": "system",
+            "required_stages": ["video_export"],
+            "optional_stages": ["story_generation", "tts_generation", "draft_generation", "youtube_publish"]
+        }
+    )

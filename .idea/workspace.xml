@@ -7,15 +7,24 @@
     <list default="true" id="b06674bc-41ad-4cbf-b795-3fc27c1ebd5f" name="更改" comment="增加超时设置">
       <change beforePath="$PROJECT_DIR$/.claude/settings.local.json" beforeDir="false" afterPath="$PROJECT_DIR$/.claude/settings.local.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/api_with_db.py" beforeDir="false" afterPath="$PROJECT_DIR$/api_with_db.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/account_driven_executor.py" beforeDir="false" afterPath="$PROJECT_DIR$/account_driven_executor.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/api_auto_publish.py" beforeDir="false" afterPath="$PROJECT_DIR$/api_auto_publish.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/database.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/api_with_db.py" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/api_with_db.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/TaskDetailDrawer/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/TaskDetailDrawer/index.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/Dashboard/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/Dashboard/index.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/TaskCenter/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/TaskCenter/index.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/services/backend.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/services/backend.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/services/pipelineAdapter.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/services/pipelineAdapter.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/types/task.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/types/task.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/AutoPublish/AccountGroupManagerEnhanced.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/AutoPublish/AccountGroupManagerEnhanced.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/AutoPublish/ConfigFormModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/AutoPublish/ConfigFormModal.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/AutoPublish/PublishConfigManagement.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/AutoPublish/PublishConfigManagement.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/AutoPublish/PublishConfigManager.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/AutoPublish/PublishConfigManager.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/services/autoPublish.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/services/autoPublish.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/gemini_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/gemini_client.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pipeline_registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/pipeline_registry.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/platform_monitor.py" beforeDir="false" afterPath="$PROJECT_DIR$/platform_monitor.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/prompts/final_polish.md" beforeDir="false" afterPath="$PROJECT_DIR$/prompts/final_polisher.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ring_scheduler.py" beforeDir="false" afterPath="$PROJECT_DIR$/ring_scheduler.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/start_auto_publish.py" beforeDir="false" afterPath="$PROJECT_DIR$/start_auto_publish.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/story_pipeline_v3_runner.py" beforeDir="false" afterPath="$PROJECT_DIR$/story_pipeline_v3_runner.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voice_gen/tts_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/voice_gen/tts_client.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/youtube_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/youtube_client.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -43,17 +52,17 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ASKED_MARK_IGNORED_FILES_AS_EXCLUDED&quot;: &quot;true&quot;,
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
-    &quot;last_opened_file_path&quot;: &quot;/Users/pengfei.shi/workspace/youtube/story_generator/frontend&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ASKED_MARK_IGNORED_FILES_AS_EXCLUDED": "true",
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "feature-auto-publish",
+    "last_opened_file_path": "/Users/pengfei.shi/workspace/youtube/story_generator/frontend"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$/frontend" />

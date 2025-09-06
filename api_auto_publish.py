@@ -5,13 +5,14 @@
 """
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional, Dict, Any, List
 from datetime import datetime, date, time, timedelta
-import asyncio
 import logging
 import uuid
 from sqlalchemy import text
+import json
+import inspect
 
 from auth_middleware import get_current_user, require_auth
 from pipeline_registry import get_pipeline_registry
@@ -19,10 +20,20 @@ from ring_scheduler import get_ring_scheduler
 from account_driven_executor import get_account_driven_executor
 from platform_monitor import get_platform_monitor
 from strategy_engine import get_strategy_engine
+from schedule_executor import get_schedule_executor
 from database import get_db_manager
 from models_auto_publish import AccountGroupModel, AccountGroupMemberModel, PublishStrategyModel
 
+# 配置logger，确保输出到正确的日志文件
 logger = logging.getLogger(__name__)
+# 添加文件处理器
+if not logger.handlers:
+    file_handler = logging.FileHandler('logs/api_with_db.log', encoding='utf-8')
+    file_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    logger.setLevel(logging.DEBUG)
 
 # 创建路由器
 router = APIRouter(prefix="/api/auto-publish", tags=["auto-publish"])
@@ -51,10 +62,56 @@ class CreatePublishConfigRequest(BaseModel):
     config_name: str = Field(..., description="配置名称")
     group_id: str = Field(..., description="账号组ID")
     pipeline_id: str = Field(..., description="Pipeline ID")
-    trigger_type: str = Field(..., description="触发类型: scheduled, monitor")
+    trigger_type: str = Field(..., description="触发类型: scheduled, monitor, manual")
     trigger_config: Dict[str, Any] = Field(..., description="触发器配置")
     strategy_id: Optional[str] = Field(None, description="策略ID")
     priority: int = Field(50, ge=0, le=100, description="优先级")
+    pipeline_params: Optional[Dict[str, Any]] = Field(None, description="Pipeline参数配置")
+    pipeline_config: Optional[Dict[str, Any]] = Field(None, description="Pipeline配置（兼容旧字段）")
+    
+    @field_validator('config_name')
+    @classmethod
+    def validate_config_name(cls, v):
+        logger.debug(f"[Pydantic] 校验 config_name: {v}")
+        if not v or not v.strip():
+            raise ValueError('配置名称不能为空')
+        return v
+    
+    @field_validator('trigger_type')
+    @classmethod
+    def validate_trigger_type(cls, v):
+        logger.debug(f"[Pydantic] 校验 trigger_type: {v}")
+        valid_types = ['scheduled', 'monitor', 'manual', 'event']
+        if v not in valid_types:
+            raise ValueError(f'触发类型必须是: {", ".join(valid_types)}')
+        return v
+    
+    @field_validator('priority')
+    @classmethod
+    def validate_priority(cls, v):
+        logger.debug(f"[Pydantic] 校验 priority: {v}")
+        if v < 0 or v > 100:
+            raise ValueError('优先级必须在0-100之间')
+        return v
+    
+    @field_validator('pipeline_params', 'pipeline_config', mode='before')
+    @classmethod
+    def validate_pipeline_params(cls, v):
+        logger.debug(f"[Pydantic] 校验 pipeline参数: {v}, 类型: {type(v)}")
+        if v is None:
+            return {}
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError as e:
+                logger.error(f"[Pydantic] pipeline参数JSON解析失败: {e}, 原始值: {v}")
+                raise ValueError(f'pipeline参数必须是有效的JSON: {e}')
+        return v
+    
+    @model_validator(mode='after')
+    def validate_all(self):
+        logger.info(f"[Pydantic] 完整请求数据校验: {json.dumps({k: str(v)[:100] for k, v in self.model_dump().items()}, ensure_ascii=False)}")
+        return self
     
 class PublishConfigResponse(BaseModel):
     """发布配置响应"""
@@ -137,7 +194,15 @@ async def create_account_group(
             session.add(group)
             
             # 添加成员
+            logger.info(f"准备添加成员到账号组 {group_id}: {request.account_ids}")
             for account_id in request.account_ids:
+                # 检查账号是否存在
+                from database import Account
+                account = session.query(Account).filter_by(account_id=account_id).first()
+                if not account:
+                    logger.warning(f"账号 {account_id} 不存在，跳过")
+                    continue
+                    
                 member = AccountGroupMemberModel(
                     group_id=group_id,
                     account_id=account_id,
@@ -145,10 +210,17 @@ async def create_account_group(
                     is_active=True
                 )
                 session.add(member)
+                logger.debug(f"添加成员 {account_id} 到组 {group_id}")
             
             session.commit()
             
-            logger.info(f"创建账号组: {group_id}, 成员数: {len(request.account_ids)}")
+            # 验证成员是否成功添加
+            actual_members = session.query(AccountGroupMemberModel).filter_by(
+                group_id=group_id,
+                is_active=True
+            ).count()
+            
+            logger.info(f"创建账号组: {group_id}, 请求成员数: {len(request.account_ids)}, 实际成员数: {actual_members}")
             
             return AccountGroupResponse(
                 group_id=group_id,
@@ -171,6 +243,7 @@ async def list_account_groups(
     current_user: Dict = Depends(require_auth)
 ):
     """列出账号组"""
+    logger.info(f"[Line {inspect.currentframe().f_lineno}] GET /account-groups called - group_type: {group_type}, is_active: {is_active}")
     try:
         db = get_db_manager()
         
@@ -185,23 +258,47 @@ async def list_account_groups(
             
             groups = query.all()
             
-            # 获取每个组的成员数
+            # 获取每个组的成员数和账号信息
             result = []
             for group in groups:
-                member_count = session.query(AccountGroupMemberModel).filter_by(
+                # 获取成员列表
+                members = session.query(AccountGroupMemberModel).filter_by(
                     group_id=group.group_id,
                     is_active=True
-                ).count()
+                ).all()
                 
-                result.append(AccountGroupResponse(
-                    group_id=group.group_id,
-                    group_name=group.group_name,
-                    group_type=group.group_type,
-                    description=group.description,
-                    is_active=group.is_active,
-                    member_count=member_count,
-                    created_at=group.created_at
-                ))
+                member_count = len(members)
+                
+                # 获取账号详细信息
+                account_list = []
+                if members:
+                    from database import Account
+                    for member in members:
+                        account = session.query(Account).filter_by(
+                            account_id=member.account_id
+                        ).first()
+                        if account:
+                            account_list.append({
+                                "account_id": account.account_id,
+                                "account_name": account.account_name,
+                                "profile_id": account.profile_id,
+                                "platform": "youtube",  # Default platform
+                                "role": member.role,
+                                "join_date": member.join_date.isoformat() if member.join_date else None
+                            })
+                
+                # 构建响应
+                group_data = {
+                    "group_id": group.group_id,
+                    "group_name": group.group_name,
+                    "group_type": group.group_type,
+                    "description": group.description,
+                    "is_active": group.is_active,
+                    "member_count": member_count,
+                    "members": account_list,  # 添加成员列表
+                    "created_at": group.created_at.isoformat() if group.created_at else None
+                }
+                result.append(group_data)
             
             return {"groups": result}
         
@@ -209,17 +306,18 @@ async def list_account_groups(
         logger.error(f"列出账号组失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/account-groups/{group_id}/members")
-async def get_account_group_members(
+@router.get("/account-groups/{group_id}")
+async def get_account_group_detail(
     group_id: str,
     current_user: Dict = Depends(require_auth)
 ):
-    """获取账号组成员"""
+    """获取账号组详情（包含成员信息）"""
+    logger.info(f"[Line {inspect.currentframe().f_lineno}] GET /account-groups/{{group_id}} called - group_id: {group_id}")
     try:
         db = get_db_manager()
         
         with db.get_session() as session:
-            # 检查组是否存在
+            # 获取组信息
             group = session.query(AccountGroupModel).filter_by(
                 group_id=group_id
             ).first()
@@ -234,27 +332,109 @@ async def get_account_group_members(
             ).all()
             
             # 获取账号详细信息
-            from database import Accounts
-            result = []
+            from database import Account
+            account_list = []
             for member in members:
-                account = session.query(Accounts).filter_by(
+                account = session.query(Account).filter_by(
                     account_id=member.account_id
                 ).first()
                 
                 if account:
-                    result.append({
+                    account_list.append({
                         "account_id": account.account_id,
                         "account_name": account.account_name,
                         "profile_id": account.profile_id,
+                        "platform": "youtube",  # Default platform
                         "role": member.role,
                         "join_date": member.join_date.isoformat() if member.join_date else None
                     })
             
             return {
+                "group_id": group.group_id,
+                "group_name": group.group_name,
+                "group_type": group.group_type,
+                "description": group.description,
+                "is_active": group.is_active,
+                "member_count": len(account_list),
+                "members": account_list,
+                "created_at": group.created_at.isoformat() if group.created_at else None,
+                "updated_at": group.updated_at.isoformat() if group.updated_at else None
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        logger.error(f"获取账号组详情失败: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/account-groups/{group_id}/members")
+async def get_account_group_members(
+    group_id: str,
+    current_user: Dict = Depends(require_auth)
+):
+    """获取账号组成员"""
+    logger.info(f"[Line {inspect.currentframe().f_lineno}] GET /account-groups/{{group_id}}/members called - group_id: {group_id}")
+    try:
+        logger.info(f"[GET_MEMBERS] 开始获取账号组成员 - group_id: {group_id}")
+        db = get_db_manager()
+        
+        with db.get_session() as session:
+            # 检查组是否存在
+            logger.debug(f"[GET_MEMBERS] 查询账号组: {group_id}")
+            group = session.query(AccountGroupModel).filter_by(
+                group_id=group_id
+            ).first()
+            
+            if not group:
+                logger.warning(f"[GET_MEMBERS] 账号组不存在: {group_id}")
+                raise HTTPException(status_code=404, detail=f"账号组不存在: {group_id}")
+            
+            logger.debug(f"[GET_MEMBERS] 找到账号组: {group.group_name}")
+            
+            # 获取成员列表
+            logger.debug(f"[GET_MEMBERS] 查询账号组成员...")
+            members = session.query(AccountGroupMemberModel).filter_by(
+                group_id=group_id,
+                is_active=True
+            ).all()
+            
+            logger.info(f"[GET_MEMBERS] 找到 {len(members)} 个成员记录")
+            
+            # 获取账号详细信息
+            from database import Account
+            result = []
+            for i, member in enumerate(members):
+                logger.debug(f"[GET_MEMBERS] 处理成员 {i+1}/{len(members)}: account_id={member.account_id}")
+                account = session.query(Account).filter_by(
+                    account_id=member.account_id
+                ).first()
+                
+                if account:
+                    member_info = {
+                        "account_id": account.account_id,
+                        "account_name": account.account_name,
+                        "profile_id": account.profile_id,
+                        "platform": "youtube",  # 添加platform字段
+                        "role": member.role,
+                        "join_date": member.join_date.isoformat() if member.join_date else None,
+                        "is_active": member.is_active
+                    }
+                    result.append(member_info)
+                    logger.debug(f"[GET_MEMBERS] 成员信息: {member_info}")
+                else:
+                    logger.warning(f"[GET_MEMBERS] 账号不存在: account_id={member.account_id}")
+            
+            response = {
                 "group_id": group_id,
                 "group_name": group.group_name,
                 "members": result
             }
+            
+            logger.info(f"[GET_MEMBERS] 成功返回 {len(result)} 个成员信息")
+            logger.debug(f"[GET_MEMBERS] 响应数据: {json.dumps(response, ensure_ascii=False)}")
+            
+            return response
             
     except HTTPException:
         raise
@@ -274,6 +454,8 @@ async def create_publish_config(
 ):
     """创建发布配置"""
     try:
+        # 记录接收到的原始请求数据
+        logger.info(f"[API] 创建配置请求数据: {request.model_dump()}")
         # 验证Pipeline是否存在
         registry = get_pipeline_registry()
         pipeline = registry.get_pipeline(request.pipeline_id)
@@ -283,26 +465,226 @@ async def create_publish_config(
         # 创建配置
         config_id = f"config_{datetime.now().strftime('%Y%m%d%H%M%S')}_{str(uuid.uuid4())[:8]}"
         
-        config = {
-            "config_id": config_id,
-            "config_name": request.config_name,
-            "group_id": request.group_id,
-            "pipeline_id": request.pipeline_id,
-            "trigger_type": request.trigger_type,
-            "trigger_config": request.trigger_config,
-            "strategy_id": request.strategy_id,
-            "priority": request.priority,
-            "is_active": True,
-            "created_at": datetime.now(),
-            "updated_at": datetime.now()
-        }
+        db = get_db_manager()
         
-        # 存储配置
-        publish_configs_storage[config_id] = config
+        # 使用事务确保配置和时间槽一起创建
+        with db.get_session() as session:
+            try:
+                # 1. 插入配置到数据库
+                session.execute(text("""
+                    INSERT INTO publish_configs (
+                        config_id, config_name, group_id, pipeline_id, 
+                        pipeline_config, trigger_type, trigger_config, 
+                        strategy_id, priority, is_active, created_at, updated_at
+                    ) VALUES (
+                        :config_id, :config_name, :group_id, :pipeline_id,
+                        :pipeline_config, :trigger_type, :trigger_config,
+                        :strategy_id, :priority, :is_active, :created_at, :updated_at
+                    )
+                """), {
+                    "config_id": config_id,
+                    "config_name": request.config_name,
+                    "group_id": request.group_id,
+                    "pipeline_id": request.pipeline_id,
+                    "pipeline_config": json.dumps(request.pipeline_params or request.pipeline_config or {}),
+                    "trigger_type": request.trigger_type,
+                    "trigger_config": json.dumps(request.trigger_config),
+                    "strategy_id": request.strategy_id,
+                    "priority": request.priority,
+                    "is_active": True,
+                    "created_at": datetime.now(),
+                    "updated_at": datetime.now()
+                })
+                
+                logger.info(f"创建发布配置: {config_id}")
         
-        logger.info(f"创建发布配置: {config_id}")
+                # 2. 如果是定时触发，在同一事务中生成时间槽
+                if request.trigger_type == 'scheduled':
+                    trigger_config = request.trigger_config
+                    schedule_type = trigger_config.get('schedule_type')
+                    
+                    if schedule_type == 'interval':
+                        # 间隔调度：生成均匀分布的时间槽
+                        ring_scheduler = get_ring_scheduler()
+                        
+                        # 获取组内第一个账号
+                        accounts = session.execute(text("""
+                            SELECT a.account_id FROM accounts a
+                            JOIN account_group_members agm ON a.account_id = agm.account_id
+                            WHERE agm.group_id = :group_id AND a.is_active = 1
+                            LIMIT 1
+                        """), {"group_id": request.group_id}).fetchall()
+                        
+                        if accounts:
+                            # 获取同组其他间隔配置的数量（不包括当前正在创建的）
+                            existing_interval_configs = session.execute(text("""
+                                SELECT COUNT(*) FROM publish_configs
+                                WHERE group_id = :group_id
+                                AND trigger_type = 'scheduled'
+                                AND JSON_EXTRACT(trigger_config, '$.schedule_type') = 'interval'
+                                AND is_active = 1
+                                AND config_id != :config_id
+                            """), {"group_id": request.group_id, "config_id": config_id}).scalar() or 0
+                            
+                            # 计算间隔小时数
+                            interval_value = trigger_config.get('schedule_interval', trigger_config.get('interval', 1))
+                            interval_unit = trigger_config.get('schedule_interval_unit', trigger_config.get('unit', 'hours'))
+                            
+                            # 转换为小时
+                            if interval_unit == 'minutes':
+                                interval_hours = interval_value / 60
+                            elif interval_unit == 'hours':
+                                interval_hours = interval_value
+                            elif interval_unit == 'days':
+                                interval_hours = interval_value * 24
+                            else:
+                                interval_hours = 1
+                            
+                            # 生成时间槽
+                            account_id = accounts[0][0]
+                            config_index = existing_interval_configs  # 当前配置的索引
+                            total_configs = config_index + 1  # 包含当前配置的总数
+                            
+                            slots = ring_scheduler.generate_interval_slots(
+                                config_id=config_id,
+                                account_id=account_id,
+                                interval_hours=interval_hours,
+                                config_index=config_index,
+                                total_configs=total_configs,
+                                days_ahead=7
+                            )
+                            
+                            logger.info(f"为间隔配置 {config_id} 生成了 {len(slots)} 个时间槽，偏移索引: {config_index}")
+                            
+                            # 3. 在同一事务中保存时间槽
+                            if slots:
+                                # 直接在当前session中保存槽位
+                                for slot in slots:
+                                    session.execute(text("""
+                                        INSERT INTO ring_schedule_slots (
+                                            config_id, account_id, slot_date, 
+                                            slot_hour, slot_minute, slot_index,
+                                            status, metadata
+                                        ) VALUES (
+                                            :config_id, :account_id, :slot_date,
+                                            :slot_hour, :slot_minute, :slot_index,
+                                            :status, :metadata
+                                        )
+                                    """), {
+                                        "config_id": slot.config_id,
+                                        "account_id": slot.account_id,
+                                        "slot_date": slot.slot_date,
+                                        "slot_hour": slot.slot_time.hour,
+                                        "slot_minute": slot.slot_time.minute,
+                                        "slot_index": slot.slot_index,
+                                        "status": slot.status,
+                                        "metadata": json.dumps(slot.metadata) if slot.metadata else None
+                                    })
+                                
+                                logger.info(f"已在事务中保存 {len(slots)} 个时间槽")
+                    else:
+                        # 其他调度类型（daily, weekly, monthly, cron等）
+                        logger.info(f"处理调度类型: {request.trigger_config.get('schedule_type')}")
+                        
+                        # 为daily类型生成槽位
+                        if request.trigger_config.get('schedule_type') == 'daily':
+                            logger.info(f"开始为daily类型配置生成槽位")
+                            
+                            # 获取账号组的账号
+                            accounts_query = text("""
+                                SELECT a.account_id 
+                                FROM accounts a
+                                JOIN account_group_members agm ON a.account_id = agm.account_id
+                                WHERE agm.group_id = :group_id 
+                                AND a.is_active = 1
+                            """)
+                            accounts = session.execute(accounts_query, {"group_id": request.group_id}).fetchall()
+                            
+                            if not accounts:
+                                logger.warning(f"账号组 {request.group_id} 没有活跃账号")
+                            else:
+                                account_id = accounts[0][0]
+                                scheduled_time = request.trigger_config.get('time', '00:00')
+                                logger.info(f"使用账号 {account_id}，每日执行时间: {scheduled_time}")
+                                
+                                # 生成未来7天的槽位
+                                # 注意：json模块已在文件顶部导入，date、time、timedelta也已导入
+                                
+                                hour, minute = map(int, scheduled_time.split(':'))
+                                start_date = date.today()
+                                
+                                # 如果今天的时间还没过，也生成今天的槽位
+                                current_time = datetime.now()
+                                if current_time.hour < hour or (current_time.hour == hour and current_time.minute < minute):
+                                    logger.info(f"今天的执行时间未过，生成今天的槽位")
+                                else:
+                                    logger.info(f"今天的执行时间已过，从明天开始生成槽位")
+                                    start_date = start_date + timedelta(days=1)
+                                
+                                slots_created = 0
+                                for i in range(7):
+                                    slot_date = start_date + timedelta(days=i)
+                                    
+                                    try:
+                                        # 插入槽位
+                                        insert_slot_query = text("""
+                                            INSERT INTO ring_schedule_slots (
+                                                config_id, account_id, slot_date, 
+                                                slot_hour, slot_minute, slot_index,
+                                                status, metadata, created_at, updated_at
+                                            ) VALUES (
+                                                :config_id, :account_id, :slot_date,
+                                                :slot_hour, :slot_minute, :slot_index,
+                                                :status, :metadata, datetime('now'), datetime('now')
+                                            )
+                                        """)
+                                        
+                                        session.execute(insert_slot_query, {
+                                            "config_id": config_id,
+                                            "account_id": account_id,
+                                            "slot_date": slot_date,
+                                            "slot_hour": hour,
+                                            "slot_minute": minute,
+                                            "slot_index": i,
+                                            "status": "pending",
+                                            "metadata": json.dumps({
+                                                "schedule_type": "daily",
+                                                "scheduled_time": scheduled_time
+                                            })
+                                        })
+                                        slots_created += 1
+                                        logger.info(f"创建槽位: {slot_date} {hour:02d}:{minute:02d}")
+                                    except Exception as e:
+                                        logger.warning(f"槽位创建失败或已存在: {slot_date} {hour:02d}:{minute:02d} - {e}")
+                                
+                                logger.info(f"成功创建 {slots_created} 个daily类型槽位")
+                        
+                        # 注册到调度执行器（保留原有逻辑）
+                        schedule_executor = get_schedule_executor()
+                        schedule_executor.add_config(config_id, request.trigger_config)
+                        logger.info(f"已将配置 {config_id} 注册到调度执行器")
+                
+                # 4. 提交事务
+                session.commit()
+                logger.info(f"事务提交成功，配置和时间槽已原子性创建")
+                
+            except Exception as e:
+                session.rollback()
+                logger.error(f"事务回滚: {e}")
+                raise
         
-        return PublishConfigResponse(**config)
+        return PublishConfigResponse(
+            config_id=config_id,
+            config_name=request.config_name,
+            group_id=request.group_id,
+            pipeline_id=request.pipeline_id,
+            trigger_type=request.trigger_type,
+            trigger_config=request.trigger_config,
+            strategy_id=request.strategy_id,
+            priority=request.priority,
+            is_active=True,
+            created_at=datetime.now()
+        )
         
     except HTTPException:
         raise
@@ -319,49 +701,69 @@ async def list_publish_configs(
     current_user: Dict = Depends(require_auth)
 ):
     """列出发布配置"""
+    logger.info(f"[Line {inspect.currentframe().f_lineno}] GET /publish-configs called - group_id: {group_id}, pipeline_id: {pipeline_id}, is_active: {is_active}, search: {search}")
     try:
-        # 从存储中获取配置
-        configs = list(publish_configs_storage.values())
+        logger.info(f"开始列出发布配置，筛选条件: group_id={group_id}, pipeline_id={pipeline_id}, is_active={is_active}, search={search}")
+        db = get_db_manager()
+        with db.get_session() as session:
+            # 构建查询
+            query = "SELECT * FROM publish_configs WHERE 1=1"
+            params = {}
+            
+            if group_id:
+                query += " AND group_id = :group_id"
+                params["group_id"] = group_id
+            if pipeline_id:
+                query += " AND pipeline_id = :pipeline_id"
+                params["pipeline_id"] = pipeline_id
+            if is_active is not None:
+                query += " AND is_active = :is_active"
+                params["is_active"] = is_active
+            if search:
+                query += " AND config_name LIKE :search"
+                params["search"] = f"%{search}%"
+            
+            query += " ORDER BY created_at DESC"
+            
+            logger.info(f"执行SQL查询: {query}")
+            logger.info(f"查询参数: {params}")
+            
+            results = session.execute(text(query), params).fetchall()
+            logger.info(f"查询到 {len(results)} 条配置记录")
+            
+            configs = []
+            for i, row in enumerate(results):
+                print(row)
+                logger.debug(f"处理第 {i+1} 条记录: {row[0]}, 列数: {len(row)}")
+                try:
+                    config = {
+                        "config_id": row[0],
+                        "config_name": row[1],
+                        "group_id": row[2],
+                        "pipeline_id": row[3],
+                        "trigger_type": row[4],
+                        "trigger_config": json.loads(row[5]) if row[5] and row[5].strip() else {},
+                        "strategy_id": row[6],
+                        "priority": row[7],
+                        "is_active": row[8],
+                        "created_at": row[10] if row[10] else None,
+                        "updated_at": row[11] if row[11] else None,
+                        "pipeline_config": json.loads(row[12]) if len(row) > 12 and row[12] and row[12].strip() else {}
+                    }
+                    configs.append(config)
+                    logger.debug(f"成功处理配置: {config['config_id']}")
+                except Exception as row_error:
+                    logger.error(f"处理第 {i+1} 行数据时出错: {row_error}")
+                    logger.error(f"错误的行数据: {row}")
+                    raise
         
-        # 如果没有配置，添加默认测试配置
-        if not configs:
-            test_config = {
-                "config_id": "test_config_1",
-                "config_name": "每日故事视频发布",
-                "group_id": "default_group",
-                "pipeline_id": "story_v3",
-                "trigger_type": "scheduled",
-                "trigger_config": {
-                    "schedule_type": "daily",
-                    "time": "10:00",
-                    "timezone": "Asia/Shanghai"
-                },
-                "strategy_id": None,
-                "priority": 50,
-                "is_active": True,
-                "created_at": datetime.now(),
-                "updated_at": datetime.now()
-            }
-            publish_configs_storage["test_config_1"] = test_config
-            configs = [test_config]
-        
-        # 应用筛选条件
-        if group_id:
-            configs = [c for c in configs if c.get("group_id") == group_id]
-        if pipeline_id:
-            configs = [c for c in configs if c.get("pipeline_id") == pipeline_id]
-        if is_active is not None:
-            configs = [c for c in configs if c.get("is_active") == is_active]
-        if search:
-            configs = [c for c in configs if search.lower() in c.get("config_name", "").lower()]
-        
-        # 按创建时间倒序排序
-        configs.sort(key=lambda x: x.get("created_at", datetime.min), reverse=True)
-        
-        return {"configs": [PublishConfigResponse(**c) for c in configs]}
+        logger.info(f"成功构建 {len(configs)} 个配置对象")
+        return {"configs": configs, "total": len(configs)}
         
     except Exception as e:
+        import traceback
         logger.error(f"列出发布配置失败: {e}")
+        logger.error(f"错误堆栈: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/publish-configs/{config_id}")
@@ -370,10 +772,31 @@ async def get_publish_config(
     current_user: Dict = Depends(require_auth)
 ):
     """获取单个发布配置详情"""
+    logger.info(f"[Line {inspect.currentframe().f_lineno}] GET /publish-configs/{{config_id}} called - config_id: {config_id}")
     try:
-        config = publish_configs_storage.get(config_id)
-        if not config:
-            raise HTTPException(status_code=404, detail=f"配置不存在: {config_id}")
+        db = get_db_manager()
+        with db.get_session() as session:
+            result = session.execute(text("""
+                SELECT * FROM publish_configs WHERE config_id = :config_id
+            """), {"config_id": config_id}).fetchone()
+            
+            if not result:
+                raise HTTPException(status_code=404, detail=f"配置不存在: {config_id}")
+            
+            config = {
+                "config_id": result[0],
+                "config_name": result[1],
+                "group_id": result[2],
+                "pipeline_id": result[3],
+                "trigger_type": result[4],
+                "trigger_config": json.loads(result[5]) if result[5] and result[5].strip() else {},
+                "strategy_id": result[6],
+                "priority": result[7],
+                "is_active": result[8],
+                "created_at": result[10],
+                "updated_at": result[11],
+                "pipeline_config": json.loads(result[12]) if result[12] and result[12].strip() else {}
+            }
         
         return PublishConfigResponse(**config)
         
@@ -390,10 +813,19 @@ async def update_publish_config(
     current_user: Dict = Depends(require_auth)
 ):
     """更新发布配置"""
+    logger.info(f"[API] 开始更新配置, config_id: {config_id}")
+    logger.info(f"[API] 更新配置请求数据: {request.model_dump()}")
     try:
-        config = publish_configs_storage.get(config_id)
-        if not config:
-            raise HTTPException(status_code=404, detail=f"配置不存在: {config_id}")
+        db = get_db_manager()
+        
+        # 从数据库获取配置
+        with db.get_session() as session:
+            result = session.execute(text("""
+                SELECT * FROM publish_configs WHERE config_id = :config_id
+            """), {"config_id": config_id}).fetchone()
+            
+            if not result:
+                raise HTTPException(status_code=404, detail=f"配置不存在: {config_id}")
         
         # 验证Pipeline是否存在
         registry = get_pipeline_registry()
@@ -401,26 +833,66 @@ async def update_publish_config(
         if not pipeline:
             raise HTTPException(status_code=404, detail=f"Pipeline不存在: {request.pipeline_id}")
         
-        # 更新配置
-        config.update({
-            "config_name": request.config_name,
-            "group_id": request.group_id,
-            "pipeline_id": request.pipeline_id,
-            "trigger_type": request.trigger_type,
-            "trigger_config": request.trigger_config,
-            "strategy_id": request.strategy_id,
-            "priority": request.priority,
-            "updated_at": datetime.now()
-        })
+        # 统一使用pipeline_params字段（兼容前端发送的pipeline_params）
+        pipeline_config_data = request.pipeline_params or request.pipeline_config or {}
+        logger.info(f"[API] <request.pipeline_params>: {request.pipeline_params}")
+        logger.info(f"[API] < merge pipeline_config_data>: {pipeline_config_data}")
+        # 更新数据库
+        with db.get_session() as session:
+            session.execute(text("""
+                UPDATE publish_configs 
+                SET config_name = :config_name,
+                    group_id = :group_id,
+                    pipeline_id = :pipeline_id,
+                    pipeline_config = :pipeline_config,
+                    trigger_type = :trigger_type,
+                    trigger_config = :trigger_config,
+                    strategy_id = :strategy_id,
+                    priority = :priority,
+                    updated_at = :updated_at
+                WHERE config_id = :config_id
+            """), {
+                "config_id": config_id,
+                "config_name": request.config_name,
+                "group_id": request.group_id,
+                "pipeline_id": request.pipeline_id,
+                "pipeline_config": json.dumps(pipeline_config_data),
+                "trigger_type": request.trigger_type,
+                "trigger_config": json.dumps(request.trigger_config),
+                "strategy_id": request.strategy_id,
+                "priority": request.priority,
+                "updated_at": datetime.now()
+            })
+            session.commit()
         
-        logger.info(f"更新发布配置: {config_id}")
+        logger.info(f"更新发布配置成功: {config_id}, pipeline_config: {pipeline_config_data}")
         
-        return PublishConfigResponse(**config)
+        # 返回更新后的配置
+        with db.get_session() as session:
+            updated = session.execute(text("""
+                SELECT * FROM publish_configs WHERE config_id = :config_id
+            """), {"config_id": config_id}).fetchone()
+            
+            return {
+                "config_id": updated[0],
+                "config_name": updated[1],
+                "group_id": updated[2],
+                "pipeline_id": updated[3],
+                "trigger_type": updated[4],
+                "trigger_config": json.loads(updated[5]) if updated[5] and updated[5].strip() else {},
+                "strategy_id": updated[6],
+                "priority": updated[7],
+                "is_active": updated[8],
+                "pipeline_config": json.loads(updated[12]) if len(updated) > 12 and updated[12] and updated[12].strip() else {},
+                "created_at": updated[10] if updated[10] else None,
+                "updated_at": updated[11] if updated[11] else None
+            }
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"更新发布配置失败: {e}")
+        import traceback
+        logger.error(f"更新发布配置失败: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/publish-configs/{config_id}")
@@ -430,10 +902,30 @@ async def delete_publish_config(
 ):
     """删除发布配置"""
     try:
-        if config_id not in publish_configs_storage:
-            raise HTTPException(status_code=404, detail=f"配置不存在: {config_id}")
-        
-        del publish_configs_storage[config_id]
+        db = get_db_manager()
+        with db.get_session() as session:
+            # 检查配置是否存在
+            result = session.execute(text("""
+                SELECT config_id FROM publish_configs WHERE config_id = :config_id
+            """), {"config_id": config_id}).fetchone()
+            
+            if not result:
+                raise HTTPException(status_code=404, detail=f"配置不存在: {config_id}")
+            
+            # 先删除相关的槽位
+            session.execute(text("""
+                DELETE FROM ring_schedule_slots 
+                WHERE config_id = :config_id
+                AND status IN ('pending', 'scheduled')
+            """), {"config_id": config_id})
+            
+            # 再删除配置
+            session.execute(text("""
+                DELETE FROM publish_configs WHERE config_id = :config_id
+            """), {"config_id": config_id})
+            session.commit()
+            
+            logger.info(f"已删除配置 {config_id} 及其相关的槽位")
         
         logger.info(f"删除发布配置: {config_id}")
         
@@ -452,15 +944,50 @@ async def toggle_publish_config(
 ):
     """切换发布配置状态（启用/禁用）"""
     try:
-        config = publish_configs_storage.get(config_id)
-        if not config:
-            raise HTTPException(status_code=404, detail=f"配置不存在: {config_id}")
-        
-        # 切换状态
-        config["is_active"] = not config.get("is_active", True)
-        config["updated_at"] = datetime.now()
-        
-        logger.info(f"切换发布配置状态: {config_id} -> {config['is_active']}")
+        db = get_db_manager()
+        with db.get_session() as session:
+            # 获取当前状态
+            result = session.execute(text("""
+                SELECT is_active FROM publish_configs WHERE config_id = :config_id
+            """), {"config_id": config_id}).fetchone()
+            
+            if not result:
+                raise HTTPException(status_code=404, detail=f"配置不存在: {config_id}")
+            
+            # 切换状态
+            new_status = not result[0]
+            session.execute(text("""
+                UPDATE publish_configs 
+                SET is_active = :is_active, updated_at = :updated_at
+                WHERE config_id = :config_id
+            """), {
+                "is_active": new_status,
+                "updated_at": datetime.now(),
+                "config_id": config_id
+            })
+            session.commit()
+            
+            logger.info(f"切换发布配置状态: {config_id} -> {new_status}")
+            
+            # 返回更新后的配置
+            result = session.execute(text("""
+                SELECT * FROM publish_configs WHERE config_id = :config_id
+            """), {"config_id": config_id}).fetchone()
+            
+            config = {
+                "config_id": result[0],
+                "config_name": result[1],
+                "group_id": result[2],
+                "pipeline_id": result[3],
+                "trigger_type": result[4],
+                "trigger_config": json.loads(result[5]) if result[5] and result[5].strip() else {},
+                "strategy_id": result[6],
+                "priority": result[7],
+                "is_active": result[8],
+                "created_at": result[10],
+                "updated_at": result[11],
+                "pipeline_config": json.loads(result[12]) if result[12] and result[12].strip() else {}
+            }
         
         return PublishConfigResponse(**config)
         
@@ -470,6 +997,268 @@ async def toggle_publish_config(
         logger.error(f"切换发布配置状态失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/publish-configs/{config_id}/trigger")
+async def manual_trigger_config(
+    config_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: Dict = Depends(require_auth)
+):
+    """手动触发发布配置"""
+    try:
+        # 获取配置
+        db = get_db_manager()
+        with db.get_session() as session:
+            result = session.execute(text("""
+                SELECT config_id, config_name, group_id, pipeline_id, pipeline_config,
+                       trigger_type, trigger_config, strategy_id, priority, is_active
+                FROM publish_configs
+                WHERE config_id = :config_id
+            """), {"config_id": config_id}).fetchone()
+            
+            if not result:
+                raise HTTPException(status_code=404, detail=f"配置不存在: {config_id}")
+            
+            logger.info(f"[手动触发] 从数据库读取配置: {result}")
+            logger.info(f"[手动触发] pipeline_config原始值: {result[4]}")
+            
+            config = {
+                "config_id": result[0],
+                "config_name": result[1],
+                "group_id": result[2],
+                "pipeline_id": result[3],
+                "pipeline_config": json.loads(result[4]) if result[4] and result[4].strip() else {},
+                "trigger_type": result[5],
+                "trigger_config": json.loads(result[6]) if result[6] and result[6].strip() else {},
+                "strategy_id": result[7],
+                "priority": result[8],
+                "is_active": result[9]
+            }
+            
+            logger.info(f"[手动触发] 解析后的pipeline_config: {config['pipeline_config']}")
+            
+            if not config["is_active"]:
+                raise HTTPException(status_code=400, detail="配置未启用，无法手动触发")
+            
+            # 获取账号组的所有账号
+            accounts = session.execute(text("""
+                SELECT a.account_id, a.account_name, a.profile_id, a.is_active
+                FROM accounts a
+                JOIN account_group_members agm ON a.account_id = agm.account_id
+                WHERE agm.group_id = :group_id AND a.is_active = 1
+            """), {"group_id": config["group_id"]}).fetchall()
+            
+            if not accounts:
+                raise HTTPException(status_code=400, detail="账号组中没有可用账号")
+            
+            # 获取Pipeline
+            registry = get_pipeline_registry()
+            pipeline = registry.get_pipeline(config["pipeline_id"])
+            if not pipeline:
+                raise HTTPException(status_code=404, detail=f"Pipeline不存在: {config['pipeline_id']}")
+            
+            # 为每个账号创建任务
+            created_tasks = []
+            for account in accounts:
+                task_id = f"manual_{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}"
+                
+                # 创建任务记录
+                session.execute(text("""
+                    INSERT INTO auto_publish_tasks (
+                        task_id, config_id, group_id, account_id, pipeline_id, 
+                        pipeline_status, created_at
+                    ) VALUES (
+                        :task_id, :config_id, :group_id, :account_id, :pipeline_id,
+                        'pending', :created_at
+                    )
+                """), {
+                    "task_id": task_id,
+                    "config_id": config_id,
+                    "group_id": config["group_id"],
+                    "account_id": account[0],
+                    "pipeline_id": config["pipeline_id"],
+                    "created_at": datetime.now()
+                })
+                
+                created_tasks.append({
+                    "task_id": task_id,
+                    "account_id": account[0],
+                    "account_name": account[1]
+                })
+                
+                # 异步执行Pipeline
+                background_tasks.add_task(
+                    execute_pipeline_task,
+                    task_id,
+                    account[0],
+                    config["pipeline_id"],
+                    config.get("pipeline_config", {})
+                )
+            
+            session.commit()
+            
+            logger.info(f"手动触发配置 {config_id}，创建了 {len(created_tasks)} 个任务")
+            
+            return {
+                "message": f"成功触发配置，创建了 {len(created_tasks)} 个任务",
+                "config_id": config_id,
+                "task_count": len(created_tasks),
+                "tasks": created_tasks
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"手动触发配置失败: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+async def execute_pipeline_task(task_id: str, account_id: str, pipeline_id: str, pipeline_config: dict):
+    """执行Pipeline任务（后台任务）"""
+    try:
+        db = get_db_manager()
+        registry = get_pipeline_registry()
+        
+        # 更新任务状态为运行中
+        with db.get_session() as session:
+            session.execute(text("""
+                UPDATE auto_publish_tasks
+                SET pipeline_status = 'running', started_at = :started_at
+                WHERE task_id = :task_id
+            """), {
+                "task_id": task_id,
+                "started_at": datetime.now()
+            })
+            session.commit()
+        
+        # 获取Pipeline
+        logger.info(f"[Pipeline执行] 开始获取Pipeline: {pipeline_id}")
+        pipeline_metadata = registry.get_pipeline(pipeline_id)
+        logger.info(f"[Pipeline执行] Pipeline元数据: {pipeline_metadata}, 类型: {type(pipeline_metadata)}")
+        
+        if not pipeline_metadata:
+            logger.error(f"[Pipeline执行] Pipeline不存在: {pipeline_id}")
+            raise Exception(f"Pipeline不存在: {pipeline_id}")
+        
+        # 检查是否是PipelineMetadata对象
+        if hasattr(pipeline_metadata, 'pipeline_class'):
+            # 如果是PipelineMetadata对象，获取实际的类
+            pipeline_class_str = pipeline_metadata.pipeline_class
+            logger.info(f"[Pipeline执行] Pipeline类路径: {pipeline_class_str}")
+            
+            # 动态导入Pipeline类
+            module_name, class_name = pipeline_class_str.rsplit('.', 1)
+            logger.info(f"[Pipeline执行] 导入模块: {module_name}, 类名: {class_name}")
+            
+            import importlib
+            module = importlib.import_module(module_name)
+            pipeline_class = getattr(module, class_name)
+            logger.info(f"[Pipeline执行] 成功导入Pipeline类: {pipeline_class}")
+        else:
+            # 直接使用返回的类
+            pipeline_class = pipeline_metadata
+            logger.info(f"[Pipeline执行] 直接使用Pipeline类: {pipeline_class}")
+        
+        # 获取账号信息
+        logger.info(f"[Pipeline执行] 获取账号信息: {account_id}")
+        with db.get_session() as session:
+            account = session.execute(text("""
+                SELECT account_id, account_name, profile_id, channel_url
+                FROM accounts
+                WHERE account_id = :account_id
+            """), {"account_id": account_id}).fetchone()
+            
+            if not account:
+                logger.error(f"[Pipeline执行] 账号不存在: {account_id}")
+                raise Exception(f"账号不存在: {account_id}")
+            
+            logger.info(f"[Pipeline执行] 账号信息: ID={account[0]}, 名称={account[1]}")
+        
+        # 执行Pipeline
+        logger.info(f"[Pipeline执行] 创建Pipeline实例，配置: {pipeline_config}")
+        pipeline_instance = pipeline_class(pipeline_config)
+        logger.info(f"[Pipeline执行] Pipeline实例创建成功: {pipeline_instance}")
+        
+        # 合并账号参数和pipeline配置参数
+        execute_params = {
+            "account_id": account[0],
+            "account_name": account[1],
+            "profile_id": account[2],
+            "channel_url": account[3],
+            "platform": "youtube",  # 默认平台
+            "cookies": {},  # 暂时使用空的cookies
+            **pipeline_config  # 合并pipeline配置参数（如video_id等）
+        }
+        logger.info(f"[Pipeline执行] 执行参数: {execute_params}")
+        
+        logger.info(f"[Pipeline执行] 开始执行Pipeline...")
+        # execute方法现在是异步的，需要await
+        result = await pipeline_instance.execute(execute_params)
+        logger.info(f"[Pipeline执行] Pipeline执行完成，结果: {result}")
+        
+        # 根据执行结果更新任务状态
+        if result and result.get('success'):
+            # 执行成功
+            with db.get_session() as session:
+                session.execute(text("""
+                    UPDATE auto_publish_tasks
+                    SET pipeline_status = 'completed',
+                        completed_at = :completed_at,
+                        pipeline_result = :pipeline_result
+                    WHERE task_id = :task_id
+                """), {
+                    "task_id": task_id,
+                    "completed_at": datetime.now(),
+                    "pipeline_result": json.dumps(result) if result else None
+                })
+                session.commit()
+            logger.info(f"任务 {task_id} 执行成功")
+        else:
+            # 执行失败
+            error_msg = result.get('error', 'Pipeline execution failed') if result else 'Pipeline returned no result'
+            with db.get_session() as session:
+                session.execute(text("""
+                    UPDATE auto_publish_tasks
+                    SET pipeline_status = 'failed',
+                        completed_at = :completed_at,
+                        error_message = :error_message,
+                        pipeline_result = :pipeline_result
+                    WHERE task_id = :task_id
+                """), {
+                    "task_id": task_id,
+                    "completed_at": datetime.now(),
+                    "error_message": error_msg,
+                    "pipeline_result": json.dumps(result) if result else None
+                })
+                session.commit()
+            logger.error(f"任务 {task_id} 执行失败: {error_msg}")
+        
+    except Exception as e:
+        logger.error(f"任务 {task_id} 执行失败: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        
+        # 更新任务状态为失败
+        try:
+            db = get_db_manager()
+            with db.get_session() as session:
+                session.execute(text("""
+                    UPDATE auto_publish_tasks
+                    SET pipeline_status = 'failed',
+                        completed_at = :completed_at,
+                        error_message = :error_message
+                    WHERE task_id = :task_id
+                """), {
+                    "task_id": task_id,
+                    "completed_at": datetime.now(),
+                    "error_message": str(e)
+                })
+                session.commit()
+        except Exception as update_error:
+            logger.error(f"更新任务状态失败: {update_error}")
+            import traceback
+            logger.error(traceback.format_exc())
+
 @router.get("/publish-configs/{config_id}/tasks")
 async def get_config_tasks(
     config_id: str,
@@ -478,10 +1267,45 @@ async def get_config_tasks(
     current_user: Dict = Depends(require_auth)
 ):
     """获取配置关联的任务列表"""
+    logger.info(f"[Line {inspect.currentframe().f_lineno}] GET /publish-configs/{{config_id}}/tasks called - config_id: {config_id}, status: {status}, limit: {limit}")
     try:
-        config = publish_configs_storage.get(config_id)
-        if not config:
-            raise HTTPException(status_code=404, detail=f"配置不存在: {config_id}")
+        logger.info(f"获取配置任务列表: config_id={config_id}, status={status}, limit={limit}")
+        
+        # 从数据库验证配置是否存在
+        db = get_db_manager()
+        
+        # 写入调试文件
+        with open("/tmp/debug_api.log", "a") as f:
+            f.write(f"\n[DEBUG] Database URL: {db.db_url}\n")
+            f.write(f"[DEBUG] Looking for config_id: {config_id}\n")
+        
+        with db.get_session() as session:
+            try:
+                # 先查询所有配置看看
+                all_configs = session.execute(text("SELECT config_id FROM publish_configs")).fetchall()
+                
+                with open("/tmp/debug_api.log", "a") as f:
+                    f.write(f"[DEBUG] All configs in DB: {all_configs}\n")
+                
+                config_check = session.execute(text("""
+                    SELECT config_id FROM publish_configs WHERE config_id = :config_id
+                """), {"config_id": config_id}).fetchone()
+                
+                with open("/tmp/debug_api.log", "a") as f:
+                    f.write(f"[DEBUG] Query result for {config_id}: {config_check}\n")
+                
+                logger.info(f"配置查询结果: config_id={config_id}, found={config_check is not None}")
+            except Exception as e:
+                with open("/tmp/debug_api.log", "a") as f:
+                    f.write(f"[DEBUG] Query failed: {e}\n")
+                    import traceback
+                    f.write(traceback.format_exc())
+                logger.error(f"查询配置失败: {e}", exc_info=True)
+                config_check = None
+            
+            if not config_check:
+                logger.warning(f"配置不存在: {config_id}")
+                raise HTTPException(status_code=404, detail=f"配置不存在: {config_id}")
         
         db = get_db_manager()
         
@@ -503,10 +1327,10 @@ async def get_config_tasks(
                     END as duration
                 FROM auto_publish_tasks apt
                 LEFT JOIN accounts a ON apt.account_id = a.account_id
-                WHERE apt.pipeline_id = :pipeline_id
+                WHERE apt.config_id = :config_id
             """
             
-            params = {"pipeline_id": config["pipeline_id"]}
+            params = {"config_id": config_id}
             
             if status:
                 query += " AND apt.pipeline_status = :status"
@@ -524,12 +1348,13 @@ async def get_config_tasks(
                     "pipeline_id": r[1],
                     "account_name": r[2] or "未知账号",
                     "status": r[3],
-                    "created_at": r[4].isoformat() if r[4] else None,
-                    "started_at": r[5].isoformat() if r[5] else None,
-                    "completed_at": r[6].isoformat() if r[6] else None,
+                    "created_at": str(r[4]) if r[4] else None,
+                    "started_at": str(r[5]) if r[5] else None,
+                    "completed_at": str(r[6]) if r[6] else None,
                     "duration": int(r[7]) if r[7] else None
                 })
             
+            logger.info(f"成功获取 {len(tasks)} 个任务")
             return {"tasks": tasks, "total": len(tasks)}
             
     except HTTPException:
@@ -545,10 +1370,26 @@ async def get_config_stats(
     current_user: Dict = Depends(require_auth)
 ):
     """获取配置执行统计"""
+    logger.info(f"[Line {inspect.currentframe().f_lineno}] GET /publish-configs/{{config_id}}/stats called - config_id: {config_id}, period: {period}")
     try:
-        config = publish_configs_storage.get(config_id)
-        if not config:
-            raise HTTPException(status_code=404, detail=f"配置不存在: {config_id}")
+        logger.info(f"获取配置统计: config_id={config_id}, period={period}")
+        
+        db = get_db_manager()
+        
+        # 从数据库验证配置是否存在
+        with db.get_session() as session:
+            try:
+                config_check = session.execute(text("""
+                    SELECT config_id FROM publish_configs WHERE config_id = :config_id
+                """), {"config_id": config_id}).fetchone()
+                logger.info(f"[stats] 配置查询结果: config_id={config_id}, found={config_check is not None}")
+            except Exception as e:
+                logger.error(f"[stats] 查询配置失败: {e}", exc_info=True)
+                config_check = None
+            
+            if not config_check:
+                logger.warning(f"配置不存在: {config_id}")
+                raise HTTPException(status_code=404, detail=f"配置不存在: {config_id}")
         
         # 计算时间范围
         now = datetime.now()
@@ -574,10 +1415,10 @@ async def get_config_stats(
                         ELSE NULL
                     END) as avg_duration
                 FROM auto_publish_tasks
-                WHERE pipeline_id = :pipeline_id
+                WHERE config_id = :config_id
                   AND created_at >= :start_date
             """), {
-                "pipeline_id": config["pipeline_id"],
+                "config_id": config_id,
                 "start_date": start_date
             }).fetchone()
             
@@ -590,6 +1431,7 @@ async def get_config_stats(
                 "period": period
             }
             
+            logger.info(f"成功获取统计数据: {stats}")
             return stats
             
     except HTTPException:
@@ -654,6 +1496,7 @@ async def get_schedule_slots(
     current_user: Dict = Depends(require_auth)
 ):
     """获取调度槽位"""
+    logger.info(f"[Line {inspect.currentframe().f_lineno}] GET /schedule/slots/{{config_id}} called - config_id: {config_id}, target_date: {target_date}, status: {status}")
     try:
         scheduler = get_ring_scheduler()
         
@@ -730,6 +1573,7 @@ async def get_task_status(
     current_user: Dict = Depends(require_auth)
 ):
     """获取任务状态"""
+    logger.info(f"[Line {inspect.currentframe().f_lineno}] GET /executor/task/{{task_id}} called - task_id: {task_id}")
     try:
         executor = get_account_driven_executor()
         task_status = executor.get_task_status(task_id)
@@ -754,6 +1598,7 @@ async def list_strategies(
     current_user: Dict = Depends(require_auth)
 ):
     """列出策略"""
+    logger.info(f"[Line {inspect.currentframe().f_lineno}] GET /strategies called - strategy_type: {strategy_type}, is_active: {is_active}")
     try:
         db = get_db_manager()
         
@@ -855,6 +1700,7 @@ async def get_strategy_report(
     current_user: Dict = Depends(require_auth)
 ):
     """获取策略报告"""
+    logger.info(f"[Line {inspect.currentframe().f_lineno}] GET /strategies/{{strategy_id}}/report called - strategy_id: {strategy_id}")
     try:
         engine = get_strategy_engine()
         report = engine.get_strategy_report(strategy_id)
@@ -914,6 +1760,7 @@ async def fetch_monitored_content(
     current_user: Dict = Depends(require_auth)
 ):
     """手动获取监控内容"""
+    logger.info(f"[Line {inspect.currentframe().f_lineno}] GET /monitors/fetch called - platform: {platform}, monitor_type: {monitor_type}, target: {target}, max_results: {max_results}")
     try:
         monitor = get_platform_monitor()
         
@@ -967,6 +1814,7 @@ async def list_pipelines(
     current_user: Dict = Depends(require_auth)
 ):
     """列出Pipeline"""
+    logger.info(f"[Line {inspect.currentframe().f_lineno}] GET /pipelines called - pipeline_type: {pipeline_type}, platform: {platform}, status: {status}")
     try:
         registry = get_pipeline_registry()
         
@@ -976,19 +1824,32 @@ async def list_pipelines(
             status=status
         )
         
+        # 添加调试日志
+        logger.info(f"获取到 {len(pipelines)} 个Pipeline")
+        
+        result_pipelines = []
+        for p in pipelines:
+            # 记录每个pipeline的schema信息
+            logger.debug(f"Pipeline {p.pipeline_id} config_schema: {p.config_schema}")
+            
+            pipeline_data = {
+                "pipeline_id": p.pipeline_id,
+                "pipeline_name": p.pipeline_name,
+                "pipeline_type": p.pipeline_type,
+                "pipeline_class": p.pipeline_class,
+                "config_schema": p.config_schema,  # 添加config_schema
+                "supported_platforms": p.supported_platforms,
+                "version": p.version,
+                "status": p.status,
+                "metadata": p.metadata if hasattr(p, 'metadata') else None,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+                "updated_at": p.updated_at.isoformat() if p.updated_at else None
+            }
+            result_pipelines.append(pipeline_data)
+        
         return {
             "total": len(pipelines),
-            "pipelines": [
-                {
-                    "pipeline_id": p.pipeline_id,
-                    "pipeline_name": p.pipeline_name,
-                    "pipeline_type": p.pipeline_type,
-                    "supported_platforms": p.supported_platforms,
-                    "version": p.version,
-                    "status": p.status
-                }
-                for p in pipelines
-            ]
+            "pipelines": result_pipelines
         }
         
     except Exception as e:
@@ -1013,6 +1874,11 @@ async def register_pipeline(
     try:
         registry = get_pipeline_registry()
         
+        # 添加日志记录接收到的数据
+        logger.info(f"注册Pipeline请求: pipeline_id={request.pipeline_id}")
+        logger.info(f"config_schema类型: {type(request.config_schema)}")
+        logger.info(f"config_schema内容: {json.dumps(request.config_schema, indent=2, ensure_ascii=False)}")
+        
         success = registry.register_pipeline(
             pipeline_id=request.pipeline_id,
             pipeline_name=request.pipeline_name,
@@ -1023,6 +1889,14 @@ async def register_pipeline(
             version=request.version
         )
         
+        # 验证保存结果
+        if success:
+            saved_pipeline = registry.get_pipeline(request.pipeline_id)
+            if saved_pipeline:
+                logger.info(f"Pipeline保存成功，验证config_schema: {saved_pipeline.config_schema}")
+            else:
+                logger.warning(f"Pipeline保存后无法获取: {request.pipeline_id}")
+        
         if success:
             return {
                 "success": True,
@@ -1032,7 +1906,8 @@ async def register_pipeline(
             raise HTTPException(status_code=500, detail="注册Pipeline失败")
             
     except Exception as e:
-        logger.error(f"注册Pipeline失败: {e}")
+        import traceback
+        logger.error(f"注册Pipeline失败: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/pipelines/{pipeline_id}")
@@ -1041,6 +1916,7 @@ async def get_pipeline(
     current_user: Dict = Depends(require_auth)
 ):
     """获取Pipeline详情"""
+    logger.info(f"[Line {inspect.currentframe().f_lineno}] GET /pipelines/{{pipeline_id}} called - pipeline_id: {pipeline_id}")
     try:
         registry = get_pipeline_registry()
         pipeline = registry.get_pipeline(pipeline_id)
@@ -1106,8 +1982,9 @@ async def delete_pipeline(
         # 检查是否有关联的配置
         db = get_db_manager()
         with db.get_session() as session:
+            from sqlalchemy import text
             config_count = session.execute(
-                "SELECT COUNT(*) FROM publish_configs WHERE pipeline_id = :pipeline_id",
+                text("SELECT COUNT(*) FROM publish_configs WHERE pipeline_id = :pipeline_id"),
                 {"pipeline_id": pipeline_id}
             ).fetchone()[0]
             
@@ -1142,6 +2019,7 @@ async def get_overview_stats(
     current_user: Dict = Depends(require_auth)
 ):
     """获取概览统计数据"""
+    logger.info(f"[Line {inspect.currentframe().f_lineno}] GET /overview/stats called - period: {period}")
     try:
         from datetime import timedelta
         db = get_db_manager()
@@ -1248,6 +2126,7 @@ async def get_task_time_distribution(
     current_user: Dict = Depends(require_auth)
 ):
     """获取任务时间分布数据"""
+    logger.info(f"[Line {inspect.currentframe().f_lineno}] GET /overview/task-time-distribution called - period: {period}")
     try:
         from datetime import timedelta
         db = get_db_manager()
@@ -1309,6 +2188,7 @@ async def get_top_accounts(
     current_user: Dict = Depends(require_auth)
 ):
     """获取账号TOP榜"""
+    logger.info(f"[Line {inspect.currentframe().f_lineno}] GET /overview/top-accounts called - limit: {limit}, period: {period}, metric: {metric}")
     try:
         from datetime import timedelta
         db = get_db_manager()
@@ -1366,6 +2246,7 @@ async def get_recent_tasks(
     current_user: Dict = Depends(require_auth)
 ):
     """获取最近执行任务"""
+    logger.info(f"[Line {inspect.currentframe().f_lineno}] GET /overview/recent-tasks called - limit: {limit}")
     try:
         db = get_db_manager()
         
@@ -1396,7 +2277,7 @@ async def get_recent_tasks(
                     "pipeline_name": r[1] or "未知Pipeline",
                     "account_name": r[2] or "未知账号",
                     "status": r[3],
-                    "created_at": r[4].isoformat() if r[4] else None,
+                    "created_at": r[4] if r[4] else None,
                     "duration": int(r[5]) if r[5] else None
                 })
             
@@ -1420,6 +2301,7 @@ async def get_task_list(
     current_user: Dict = Depends(require_auth)
 ):
     """获取任务列表"""
+    logger.info(f"[Line {inspect.currentframe().f_lineno}] GET /tasks called - page: {page}, page_size: {page_size}, status: {status}, config_id: {config_id}, account_id: {account_id}, start_date: {start_date}, end_date: {end_date}")
     try:
         db = get_db_manager()
         
@@ -1469,7 +2351,6 @@ async def get_task_list(
                     a.account_name,
                     apt.pipeline_id,
                     pr.pipeline_name,
-                    apt.pipeline_config,
                     apt.pipeline_status,
                     apt.pipeline_result,
                     apt.publish_status,
@@ -1504,19 +2385,18 @@ async def get_task_list(
                     "account_name": r[6] or "未知账号",
                     "pipeline_id": r[7],
                     "pipeline_name": r[8] or "未知Pipeline",
-                    "pipeline_config": r[9],
-                    "pipeline_status": r[10],
-                    "pipeline_result": r[11],
-                    "publish_status": r[12],
-                    "publish_result": r[13],
-                    "priority": r[14],
-                    "retry_count": r[15],
-                    "error_message": r[16],
-                    "created_at": r[17].isoformat() if r[17] else None,
-                    "scheduled_at": r[18].isoformat() if r[18] else None,
-                    "started_at": r[19].isoformat() if r[19] else None,
-                    "completed_at": r[20].isoformat() if r[20] else None,
-                    "metadata": r[21]
+                    "pipeline_status": r[9],
+                    "pipeline_result": r[10],
+                    "publish_status": r[11],
+                    "publish_result": r[12],
+                    "priority": r[13],
+                    "retry_count": r[14],
+                    "error_message": r[15],
+                    "created_at": r[16] if r[16] else None,
+                    "scheduled_at": r[17] if r[17] else None,
+                    "started_at": r[18] if r[18] else None,
+                    "completed_at": r[19] if r[19] else None,
+                    "metadata": r[20]
                 })
             
             return {
@@ -1527,7 +2407,8 @@ async def get_task_list(
             }
             
     except Exception as e:
-        logger.error(f"获取任务列表失败: {e}")
+        import traceback
+        logger.error(f"获取任务列表失败: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/tasks/{config_id}/group-executions")
@@ -1566,7 +2447,7 @@ async def get_group_executions(
                     apt.task_id,
                     apt.account_id,
                     a.account_name,
-                    a.platform,
+                    'youtube' as platform,
                     apt.pipeline_status,
                     apt.pipeline_result,
                     apt.started_at,
@@ -1599,7 +2480,10 @@ async def get_group_executions(
                 # 计算执行时长
                 duration = None
                 if task[6] and task[7]:  # started_at and completed_at
-                    duration = int((task[7] - task[6]).total_seconds())
+                    # 确保是datetime对象
+                    started_at = task[6] if isinstance(task[6], datetime) else datetime.fromisoformat(str(task[6]))
+                    completed_at = task[7] if isinstance(task[7], datetime) else datetime.fromisoformat(str(task[7]))
+                    duration = int((completed_at - started_at).total_seconds())
                     total_duration += duration
                     duration_count += 1
                 
@@ -1740,7 +2624,7 @@ async def get_task_performance(
             result = session.execute(text("""
                 SELECT 
                     apt.task_id,
-                    a.platform,
+                    'youtube' as platform,
                     apt.pipeline_result,
                     apt.metadata,
                     apt.updated_at
@@ -1848,61 +2732,101 @@ async def retry_task(
 @router.put("/account-groups/{group_id}")
 async def update_account_group(
     group_id: str,
-    group_name: Optional[str] = None,
-    group_type: Optional[str] = None,
-    description: Optional[str] = None,
-    is_active: Optional[bool] = None,
+    request: Dict,
     current_user: Dict = Depends(require_auth)
 ):
     """更新账号组"""
     try:
+        logger.info(f"[UPDATE_GROUP] 开始更新账号组 - group_id: {group_id}")
+        logger.debug(f"[UPDATE_GROUP] 请求数据: {json.dumps(request, ensure_ascii=False)}")
+        
         db = get_db_manager()
+        
+        # 从请求中提取参数
+        group_name = request.get("group_name")
+        group_type = request.get("group_type")
+        description = request.get("description")
+        is_active = request.get("is_active")
+        account_ids = request.get("account_ids", [])
+        
+        logger.info(f"[UPDATE_GROUP] 参数 - group_name: {group_name}, group_type: {group_type}, account_ids数量: {len(account_ids)}")
         
         with db.get_session() as session:
             # 1. 验证账号组存在
-            group_result = session.execute(text(
-                "SELECT * FROM account_groups WHERE group_id = :group_id"
-            ), {"group_id": group_id}).fetchone()
+            from models_auto_publish import AccountGroupModel, AccountGroupMemberModel
+            group = session.query(AccountGroupModel).filter_by(
+                group_id=group_id
+            ).first()
             
-            if not group_result:
+            if not group:
                 raise HTTPException(404, "Account group not found")
             
             # 2. 如果更改名称，验证唯一性
-            if group_name and group_name != group_result[1]:
-                existing = session.execute(text(
-                    "SELECT * FROM account_groups WHERE group_name = :group_name AND group_id != :group_id"
-                ), {"group_name": group_name, "group_id": group_id}).fetchone()
+            if group_name and group_name != group.group_name:
+                existing = session.query(AccountGroupModel).filter(
+                    AccountGroupModel.group_name == group_name,
+                    AccountGroupModel.group_id != group_id
+                ).first()
                 
                 if existing:
                     raise HTTPException(400, "Group name already exists")
             
-            # 3. 更新账号组
-            update_fields = []
-            params = {"group_id": group_id}
-            
+            # 3. 更新账号组基本信息
             if group_name:
-                update_fields.append("group_name = :group_name")
-                params["group_name"] = group_name
+                group.group_name = group_name
             if group_type:
-                update_fields.append("group_type = :group_type")
-                params["group_type"] = group_type
+                group.group_type = group_type
             if description is not None:
-                update_fields.append("description = :description")
-                params["description"] = description
+                group.description = description
             if is_active is not None:
-                update_fields.append("is_active = :is_active")
-                params["is_active"] = is_active
+                group.is_active = is_active
             
-            if update_fields:
-                update_fields.append("updated_at = CURRENT_TIMESTAMP")
+            # 4. 更新账号组成员
+            if account_ids is not None:
+                logger.info(f"[UPDATE_GROUP] 更新成员列表，新成员数量: {len(account_ids)}")
                 
-                query = f"""
-                    UPDATE account_groups 
-                    SET {', '.join(update_fields)}
-                    WHERE group_id = :group_id
-                """
-                session.execute(text(query), params)
-                session.commit()
+                # 删除现有成员
+                deleted_count = session.query(AccountGroupMemberModel).filter_by(
+                    group_id=group_id
+                ).delete()
+                logger.debug(f"[UPDATE_GROUP] 删除了 {deleted_count} 个现有成员")
+                
+                # 添加新成员
+                added_count = 0
+                for account_id in account_ids:
+                    logger.debug(f"[UPDATE_GROUP] 正在添加成员: {account_id}")
+                    # 验证账号存在
+                    from database import Account
+                    account = session.query(Account).filter_by(
+                        account_id=account_id
+                    ).first()
+                    
+                    if account:
+                        member = AccountGroupMemberModel(
+                            group_id=group_id,
+                            account_id=account_id,
+                            role="member",
+                            is_active=True
+                        )
+                        session.add(member)
+                        added_count += 1
+                        logger.debug(f"[UPDATE_GROUP] 成功添加成员: {account_id} - {account.account_name}")
+                    else:
+                        logger.warning(f"[UPDATE_GROUP] 账号不存在: {account_id}")
+                
+                logger.info(f"[UPDATE_GROUP] 成功添加 {added_count} 个新成员")
+            else:
+                logger.info(f"[UPDATE_GROUP] 未提供account_ids，不更新成员列表")
+            
+            session.commit()
+            logger.info(f"[UPDATE_GROUP] 账号组 {group_id} 更新成功")
+            
+            # 验证更新后的成员
+            updated_members = session.query(AccountGroupMemberModel).filter_by(
+                group_id=group_id,
+                is_active=True
+            ).count()
+            logger.info(f"[UPDATE_GROUP] 更新后账号组有 {updated_members} 个成员")
             
             return {"success": True}
             
@@ -2128,4 +3052,183 @@ async def get_group_configs(
             
     except Exception as e:
         logger.error(f"获取账号组配置失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============ 调度状态管理 ============
+
+@router.get("/schedule/status")
+async def get_schedule_status(
+    current_user: Dict = Depends(require_auth)
+):
+    """获取所有调度配置的状态"""
+    try:
+        schedule_executor = get_schedule_executor()
+        status_list = schedule_executor.get_schedule_status()
+        
+        return {
+            "total": len(status_list),
+            "schedules": status_list
+        }
+    except Exception as e:
+        logger.error(f"获取调度状态失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/schedule/test/{config_id}")
+async def test_schedule_config(
+    config_id: str,
+    current_user: Dict = Depends(require_auth)
+):
+    """测试调度配置（显示下次运行时间）"""
+    try:
+        db = get_db_manager()
+        
+        # 获取配置
+        with db.get_session() as session:
+            result = session.execute(text("""
+                SELECT trigger_config
+                FROM publish_configs
+                WHERE config_id = :config_id
+            """), {"config_id": config_id}).fetchone()
+            
+            if not result:
+                raise HTTPException(status_code=404, detail=f"配置不存在: {config_id}")
+            
+            trigger_config = json.loads(result[0])
+            
+        # 创建临时调度配置计算下次运行时间
+        schedule_executor = get_schedule_executor()
+        from schedule_executor import ScheduleConfig, ScheduleType
+        
+        config = ScheduleConfig(
+            config_id=config_id,
+            schedule_type=ScheduleType(trigger_config.get('schedule_type', 'daily')),
+            schedule_config=trigger_config
+        )
+        
+        next_run = schedule_executor._calculate_next_run(config)
+        
+        return {
+            "config_id": config_id,
+            "schedule_type": trigger_config.get('schedule_type'),
+            "trigger_config": trigger_config,
+            "next_run_time": next_run.isoformat() if next_run else None,
+            "message": f"下次运行时间: {next_run.strftime('%Y-%m-%d %H:%M:%S')}" if next_run else "无法计算下次运行时间"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"测试调度配置失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/schedule/pause/{config_id}")
+async def pause_schedule(
+    config_id: str,
+    current_user: Dict = Depends(require_auth)
+):
+    """暂停调度配置"""
+    try:
+        schedule_executor = get_schedule_executor()
+        success = schedule_executor.pause_config(config_id)
+        
+        if success:
+            # 更新数据库状态
+            db = get_db_manager()
+            with db.get_session() as session:
+                session.execute(text("""
+                    UPDATE publish_configs
+                    SET is_active = false, updated_at = :updated_at
+                    WHERE config_id = :config_id
+                """), {
+                    "config_id": config_id,
+                    "updated_at": datetime.now()
+                })
+                session.commit()
+            
+            return {"message": f"已暂停调度配置: {config_id}"}
+        else:
+            raise HTTPException(status_code=404, detail=f"调度配置不存在: {config_id}")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"暂停调度配置失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/schedule/resume/{config_id}")
+async def resume_schedule(
+    config_id: str,
+    current_user: Dict = Depends(require_auth)
+):
+    """恢复调度配置"""
+    try:
+        schedule_executor = get_schedule_executor()
+        
+        # 从数据库获取配置
+        db = get_db_manager()
+        with db.get_session() as session:
+            result = session.execute(text("""
+                SELECT trigger_config
+                FROM publish_configs
+                WHERE config_id = :config_id
+            """), {"config_id": config_id}).fetchone()
+            
+            if not result:
+                raise HTTPException(status_code=404, detail=f"配置不存在: {config_id}")
+            
+            trigger_config = json.loads(result[0])
+            
+            # 恢复调度
+            schedule_executor.update_config(config_id, trigger_config)
+            schedule_executor.resume_config(config_id)
+            
+            # 更新数据库状态
+            session.execute(text("""
+                UPDATE publish_configs
+                SET is_active = true, updated_at = :updated_at
+                WHERE config_id = :config_id
+            """), {
+                "config_id": config_id,
+                "updated_at": datetime.now()
+            })
+            session.commit()
+        
+        return {"message": f"已恢复调度配置: {config_id}"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"恢复调度配置失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/schedule/{config_id}")
+async def delete_schedule(
+    config_id: str,
+    current_user: Dict = Depends(require_auth)
+):
+    """删除调度配置"""
+    try:
+        # 从调度执行器移除
+        schedule_executor = get_schedule_executor()
+        schedule_executor.remove_config(config_id)
+        
+        # 从数据库删除
+        db = get_db_manager()
+        with db.get_session() as session:
+            session.execute(text("""
+                DELETE FROM publish_configs
+                WHERE config_id = :config_id
+            """), {"config_id": config_id})
+            session.commit()
+        
+        logger.info(f"删除调度配置: {config_id}")
+        return {"message": f"已删除调度配置: {config_id}"}
+        
+    except Exception as e:
+        logger.error(f"删除调度配置失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))

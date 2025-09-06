@@ -22,6 +22,7 @@ from account_service import get_account_service
 from publish_service import PublishService
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)  # 设置为DEBUG级别以查看详细日志
 
 
 class TaskStatus(Enum):
@@ -151,27 +152,43 @@ class AccountDrivenExecutor:
         """检查待执行的调度槽位"""
         try:
             configs = self._get_active_configs()
+            logger.debug(f"开始检查 {len(configs)} 个配置的槽位")
             
             for config in configs:
+                logger.debug(f"检查配置: {config['config_id']} ({config.get('config_name', 'unknown')})")
+                
                 # 获取下一个槽位
                 next_slot = self.ring_scheduler.get_next_slot(config['config_id'])
                 
-                if next_slot and self._should_execute_slot(next_slot):
-                    # 创建执行任务
-                    task = await self._create_task_from_slot(config, next_slot)
-                    if task:
-                        self._tasks[task.task_id] = task
-                        logger.info(f"创建任务: {task.task_id} for slot {next_slot.slot_id}")
+                if next_slot:
+                    logger.info(f"找到槽位: config={config['config_id']}, slot_id={next_slot.slot_id}, "
+                              f"time={next_slot.datetime}, status={next_slot.status}")
+                    
+                    if self._should_execute_slot(next_slot):
+                        logger.info(f"槽位满足执行条件，开始创建任务")
                         
-                        # 更新槽位状态
-                        self.ring_scheduler.update_slot_status(
-                            next_slot.slot_id,
-                            "scheduled",
-                            task.task_id
-                        )
+                        # 创建执行任务
+                        task = await self._create_task_from_slot(config, next_slot)
+                        if task:
+                            self._tasks[task.task_id] = task
+                            logger.info(f"✅ 成功创建任务: {task.task_id} for slot {next_slot.slot_id}")
+                            
+                            # 更新槽位状态
+                            self.ring_scheduler.update_slot_status(
+                                next_slot.slot_id,
+                                "scheduled",
+                                task.task_id
+                            )
+                        else:
+                            logger.warning(f"创建任务失败: config={config['config_id']}, slot={next_slot.slot_id}")
+                    else:
+                        time_diff = (next_slot.datetime - datetime.now()).total_seconds() / 60
+                        logger.debug(f"槽位未到执行时间，还需等待 {time_diff:.1f} 分钟")
+                else:
+                    logger.debug(f"配置 {config['config_id']} 没有待执行的槽位")
                         
         except Exception as e:
-            logger.error(f"检查调度槽位失败: {e}")
+            logger.error(f"检查调度槽位失败: {e}", exc_info=True)
     
     async def _execute_pipeline_tasks(self):
         """执行Pipeline任务"""
@@ -206,6 +223,7 @@ class AccountDrivenExecutor:
             self._save_task(task)
             
             # 创建Pipeline实例
+            logger.debug(f"创建Pipeline实例: pipeline_id={task.pipeline_id}, config={task.pipeline_config}")
             pipeline = self.pipeline_registry.create_instance(
                 task.pipeline_id,
                 task.pipeline_config or {}
@@ -244,13 +262,31 @@ class AccountDrivenExecutor:
     def _execute_pipeline_sync(self, pipeline, config: Dict[str, Any]) -> Dict[str, Any]:
         """同步执行Pipeline"""
         try:
+            import asyncio
+            import inspect
+            
             # 调用Pipeline的execute方法
             if hasattr(pipeline, 'execute'):
-                return pipeline.execute(config)
+                method = pipeline.execute
             elif hasattr(pipeline, 'run'):
-                return pipeline.run(config)
+                method = pipeline.run
             else:
                 raise Exception("Pipeline没有execute或run方法")
+            
+            # 检查是否是异步方法
+            result = method(config)
+            if inspect.iscoroutine(result):
+                # 如果是协程，在新的事件循环中运行
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    result = loop.run_until_complete(result)
+                finally:
+                    loop.close()
+            
+            logger.info(f"Pipeline执行完成，结果: {result}")
+            return result
+            
         except Exception as e:
             logger.error(f"Pipeline执行异常: {e}")
             raise
@@ -390,17 +426,33 @@ class AccountDrivenExecutor:
         """获取活跃的发布配置"""
         try:
             with self.db.get_session() as session:
-                # 这里简化处理，实际应该查询publish_configs表
-                # 返回模拟数据用于测试
-                return [
-                    {
-                        'config_id': 'test_config_1',
-                        'group_id': 'default_group',
-                        'pipeline_id': 'story_v3',
-                        'trigger_type': 'scheduled',
-                        'trigger_config': {'interval': 'daily'}
-                    }
-                ]
+                from sqlalchemy import text
+                # 查询所有活跃的定时发布配置
+                result = session.execute(text("""
+                    SELECT config_id, config_name, group_id, pipeline_id,
+                           trigger_type, trigger_config, strategy_id, 
+                           priority, pipeline_config
+                    FROM publish_configs
+                    WHERE is_active = 1 
+                    AND trigger_type = 'scheduled'
+                """)).fetchall()
+                
+                configs = []
+                for row in result:
+                    configs.append({
+                        'config_id': row[0],
+                        'config_name': row[1],
+                        'group_id': row[2],
+                        'pipeline_id': row[3],
+                        'trigger_type': row[4],
+                        'trigger_config': json.loads(row[5]) if row[5] else {},
+                        'strategy_id': row[6],
+                        'priority': row[7],
+                        'pipeline_config': json.loads(row[8]) if row[8] else {}
+                    })
+                
+                logger.info(f"获取到 {len(configs)} 个活跃配置")
+                return configs
         except Exception as e:
             logger.error(f"获取活跃配置失败: {e}")
             return []
@@ -450,20 +502,23 @@ class AccountDrivenExecutor:
         account_id: str
     ) -> Dict[str, Any]:
         """获取Pipeline配置"""
-        # 基础配置
-        pipeline_config = {
-            'account_id': account_id,
-            'config_id': config['config_id']
-        }
+        # 从数据库配置中获取pipeline_config
+        pipeline_config = config.get('pipeline_config', {})
+        if isinstance(pipeline_config, str):
+            try:
+                pipeline_config = json.loads(pipeline_config)
+            except:
+                pipeline_config = {}
         
-        # 根据Pipeline类型添加特定配置
-        if config['pipeline_id'] == 'story_v3':
-            # 故事Pipeline配置
-            pipeline_config.update({
-                'video_id': 'test_video',  # 实际应该从配置或监控结果获取
-                'duration': 120,
-                'gender': 0
-            })
+        # 如果pipeline_config为空，尝试从其他字段获取
+        if not pipeline_config:
+            pipeline_config = {}
+        
+        # 添加运行时必需的字段
+        pipeline_config['account_id'] = account_id
+        pipeline_config['config_id'] = config['config_id']
+        
+        logger.info(f"Pipeline配置: pipeline_id={config.get('pipeline_id')}, config={pipeline_config}")
         
         return pipeline_config
     
@@ -496,10 +551,78 @@ class AccountDrivenExecutor:
     def _save_task(self, task: ExecutionTask):
         """保存任务到数据库"""
         try:
-            # 这里简化处理，实际应该保存到auto_publish_tasks表
-            logger.debug(f"保存任务: {task.task_id}")
+            db = get_db_manager()
+            with db.get_session() as session:
+                from sqlalchemy import text
+                
+                # 检查任务是否已存在
+                existing = session.execute(text("""
+                    SELECT task_id FROM auto_publish_tasks WHERE task_id = :task_id
+                """), {"task_id": task.task_id}).fetchone()
+                
+                if existing:
+                    # 更新现有任务
+                    session.execute(text("""
+                        UPDATE auto_publish_tasks SET
+                            pipeline_status = :pipeline_status,
+                            pipeline_result = :pipeline_result,
+                            publish_status = :publish_status,
+                            publish_result = :publish_result,
+                            retry_count = :retry_count,
+                            error_message = :error_message,
+                            started_at = :started_at,
+                            completed_at = :completed_at
+                        WHERE task_id = :task_id
+                    """), {
+                        "task_id": task.task_id,
+                        "pipeline_status": task.pipeline_status,
+                        "pipeline_result": json.dumps(task.pipeline_result) if task.pipeline_result else None,
+                        "publish_status": task.publish_status,
+                        "publish_result": json.dumps(task.publish_result) if task.publish_result else None,
+                        "retry_count": task.retry_count,
+                        "error_message": task.error_message,
+                        "started_at": task.started_at,
+                        "completed_at": task.completed_at
+                    })
+                else:
+                    # 插入新任务
+                    session.execute(text("""
+                        INSERT INTO auto_publish_tasks (
+                            task_id, config_id, group_id, account_id, pipeline_id,
+                            slot_id, pipeline_status, pipeline_result, publish_status,
+                            publish_result, priority, retry_count, error_message,
+                            created_at, scheduled_at, started_at, completed_at
+                        ) VALUES (
+                            :task_id, :config_id, :group_id, :account_id, :pipeline_id,
+                            :slot_id, :pipeline_status, :pipeline_result, :publish_status,
+                            :publish_result, :priority, :retry_count, :error_message,
+                            :created_at, :scheduled_at, :started_at, :completed_at
+                        )
+                    """), {
+                        "task_id": task.task_id,
+                        "config_id": task.config_id,
+                        "group_id": task.group_id,
+                        "account_id": task.account_id,
+                        "pipeline_id": task.pipeline_id,
+                        "slot_id": task.slot_id,
+                        "pipeline_status": task.pipeline_status,
+                        "pipeline_result": json.dumps(task.pipeline_result) if task.pipeline_result else None,
+                        "publish_status": task.publish_status,
+                        "publish_result": json.dumps(task.publish_result) if task.publish_result else None,
+                        "priority": task.priority,
+                        "retry_count": task.retry_count,
+                        "error_message": task.error_message,
+                        "created_at": task.created_at,
+                        "scheduled_at": task.scheduled_at,
+                        "started_at": task.started_at,
+                        "completed_at": task.completed_at
+                    })
+                
+                session.commit()
+                logger.debug(f"任务已保存到数据库: {task.task_id}")
+                
         except Exception as e:
-            logger.error(f"保存任务失败: {e}")
+            logger.error(f"保存任务失败: {task.task_id} - {e}", exc_info=True)
     
     async def _send_alert(self, task: ExecutionTask, message: str):
         """发送告警"""

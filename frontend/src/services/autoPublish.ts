@@ -42,7 +42,10 @@ export const autoPublishService = {
     description?: string;
     account_ids: string[];
   }) {
-    return await api.post('/api/auto-publish/account-groups', data);
+    console.log('[SERVICE] createAccountGroup 调用，参数:', data);
+    const response = await api.post('/api/auto-publish/account-groups', data);
+    console.log('[SERVICE] createAccountGroup 响应:', response);
+    return response;
   },
 
   async listAccountGroups(params?: {
@@ -88,6 +91,10 @@ export const autoPublishService = {
 
   async togglePublishConfig(configId: string) {
     return await api.patch(`/api/auto-publish/publish-configs/${configId}/toggle`);
+  },
+
+  async manualTriggerConfig(configId: string) {
+    return await api.post(`/api/auto-publish/publish-configs/${configId}/trigger`);
   },
 
   async getConfigTasks(configId: string, params?: {
@@ -286,13 +293,29 @@ export const autoPublishService = {
     return await api.get('/api/auto-publish/account-groups');
   },
 
+  async getAccountGroupMembers(groupId: string) {
+    console.log('[SERVICE] getAccountGroupMembers 调用，groupId:', groupId);
+    try {
+      const response = await api.get(`/api/auto-publish/account-groups/${groupId}/members`);
+      console.log('[SERVICE] getAccountGroupMembers 响应:', response);
+      return response;
+    } catch (error) {
+      console.error('[SERVICE] getAccountGroupMembers 错误:', error);
+      throw error;
+    }
+  },
+
   async updateAccountGroup(groupId: string, data: {
     group_name?: string;
     group_type?: string;
     description?: string;
     is_active?: boolean;
+    account_ids?: string[];  // 添加account_ids参数
   }) {
-    return await api.put(`/api/auto-publish/account-groups/${groupId}`, data);
+    console.log('[SERVICE] updateAccountGroup 调用，参数:', { groupId, data });
+    const response = await api.put(`/api/auto-publish/account-groups/${groupId}`, data);
+    console.log('[SERVICE] updateAccountGroup 响应:', response);
+    return response;
   },
 
   async deleteAccountGroup(groupId: string) {

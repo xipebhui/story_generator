@@ -31,7 +31,14 @@
       "Bash(./start_all_services.sh:*)",
       "Bash(pkill:*)",
       "Bash(curl:*)",
-      "mcp__playwright__browser_close"
+      "mcp__playwright__browser_close",
+      "mcp__playwright__browser_type",
+      "Bash(uvicorn:*)",
+      "Read(/var/log/**)",
+      "Bash(mkdir:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs",
+      "mcp__playwright__browser_snapshot"
     ],
     "deny": [],
     "additionalDirectories": [

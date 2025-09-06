@@ -82,10 +82,19 @@ const AccountGroupManagerEnhanced: React.FC = () => {
 
   const loadGroups = async () => {
     setLoading(true);
+    console.log('[FRONTEND] 开始加载账号组列表...');
     try {
       const response = await autoPublishService.getAccountGroups();
+      console.log('[FRONTEND] getAccountGroups 响应:', response);
       setGroups(response.groups || []);
-    } catch (error) {
+      console.log('[FRONTEND] 成功加载 ' + (response.groups?.length || 0) + ' 个账号组');
+    } catch (error: any) {
+      console.error('[FRONTEND] 加载账号组失败:', {
+        error,
+        message: error?.message,
+        response: error?.response,
+        data: error?.response?.data
+      });
       message.error('加载账号组失败');
     } finally {
       setLoading(false);
@@ -108,29 +117,64 @@ const AccountGroupManagerEnhanced: React.FC = () => {
   };
 
   const loadGroupDetail = async (group: AccountGroup) => {
+    console.log('[FRONTEND] 开始加载账号组详情', { group_id: group.group_id, group_name: group.group_name });
+    
     try {
       // Load group members
+      console.log('[FRONTEND] 调用 getAccountGroupMembers API...');
       const membersResponse = await autoPublishService.getAccountGroupMembers(group.group_id);
+      console.log('[FRONTEND] getAccountGroupMembers 响应:', membersResponse);
       
-      // Load group stats
-      const statsResponse = await autoPublishService.getGroupStats(group.group_id);
-      setGroupStats(statsResponse);
-      
-      // Load group configs
-      const configsResponse = await autoPublishService.getGroupConfigs(group.group_id);
-      setGroupConfigs(configsResponse.configs || []);
-      
-      // Update group with members
-      setSelectedGroup({
+      // Update group with members first
+      const updatedGroup = {
         ...group,
         members: membersResponse.members || []
+      };
+      console.log('[FRONTEND] 更新 selectedGroup:', updatedGroup);
+      setSelectedGroup(updatedGroup);
+      
+      // Load group stats (optional)
+      try {
+        console.log('[FRONTEND] 调用 getGroupStats API...');
+        const statsResponse = await autoPublishService.getGroupStats(group.group_id);
+        console.log('[FRONTEND] getGroupStats 响应:', statsResponse);
+        setGroupStats(statsResponse);
+      } catch (error) {
+        console.warn('[FRONTEND] 加载统计信息失败:', error);
+        // Set default stats
+        const defaultStats = {
+          total_members: group.member_count || 0,
+          active_configs: 0,
+          total_tasks: 0,
+          success_rate: 0
+        };
+        console.log('[FRONTEND] 使用默认统计信息:', defaultStats);
+        setGroupStats(defaultStats);
+      }
+      
+      // Load group configs (optional)
+      try {
+        console.log('[FRONTEND] 调用 getGroupConfigs API...');
+        const configsResponse = await autoPublishService.getGroupConfigs(group.group_id);
+        console.log('[FRONTEND] getGroupConfigs 响应:', configsResponse);
+        setGroupConfigs(configsResponse.configs || []);
+      } catch (error) {
+        console.warn('[FRONTEND] 加载配置信息失败:', error);
+        setGroupConfigs([]);
+      }
+    } catch (error: any) {
+      console.error('[FRONTEND] 加载账号组成员失败 - 详细错误:', {
+        error,
+        message: error?.message,
+        response: error?.response,
+        data: error?.response?.data
       });
-    } catch (error) {
-      message.error('加载详情失败');
+      message.error('加载账号组成员失败');
     }
   };
 
   const showGroupDetail = async (group: AccountGroup) => {
+    console.log('[FRONTEND] 显示账号组详情，group:', group);
     setSelectedGroup(group);
     setDetailVisible(true);
     await loadGroupDetail(group);
@@ -150,6 +194,11 @@ const AccountGroupManagerEnhanced: React.FC = () => {
       group_type: group.group_type,
       description: group.description
     });
+    // Set existing members as selected accounts
+    if (group.members) {
+      const memberIds = group.members.map(member => member.account_id);
+      setSelectedAccounts(memberIds);
+    }
     setSelectedGroup(group);
     setModalVisible(true);
   };
@@ -157,21 +206,48 @@ const AccountGroupManagerEnhanced: React.FC = () => {
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
+      console.log('[FRONTEND] 提交表单数据:', {
+        values,
+        selectedAccounts,
+        isEdit,
+        group_id: selectedGroup?.group_id
+      });
       
       if (isEdit && selectedGroup) {
-        await autoPublishService.updateAccountGroup(selectedGroup.group_id, values);
-        message.success('更新成功');
-      } else {
-        await autoPublishService.createAccountGroup({
+        const updateData = {
           ...values,
           account_ids: selectedAccounts
+        };
+        console.log('[FRONTEND] 调用 updateAccountGroup API，参数:', {
+          group_id: selectedGroup.group_id,
+          data: updateData
         });
+        
+        const updateResponse = await autoPublishService.updateAccountGroup(selectedGroup.group_id, updateData);
+        console.log('[FRONTEND] updateAccountGroup 响应:', updateResponse);
+        message.success('更新成功');
+      } else {
+        const createData = {
+          ...values,
+          account_ids: selectedAccounts
+        };
+        console.log('[FRONTEND] 调用 createAccountGroup API，参数:', createData);
+        
+        const createResponse = await autoPublishService.createAccountGroup(createData);
+        console.log('[FRONTEND] createAccountGroup 响应:', createResponse);
         message.success('创建成功');
       }
       
       setModalVisible(false);
+      console.log('[FRONTEND] 重新加载账号组列表...');
       loadGroups();
-    } catch (error) {
+    } catch (error: any) {
+      console.error('[FRONTEND] 提交失败 - 详细错误:', {
+        error,
+        message: error?.message,
+        response: error?.response,
+        data: error?.response?.data
+      });
       message.error(isEdit ? '更新失败' : '创建失败');
     }
   };
@@ -338,7 +414,12 @@ const AccountGroupManagerEnhanced: React.FC = () => {
         title={isEdit ? "编辑账号组" : "创建账号组"}
         visible={modalVisible}
         onOk={handleSubmit}
-        onCancel={() => setModalVisible(false)}
+        onCancel={() => {
+          setModalVisible(false);
+          setSelectedAccounts([]);
+          setIsEdit(false);
+          form.resetFields();
+        }}
         width={800}>
         
         <Form form={form} layout="vertical">
@@ -379,29 +460,27 @@ const AccountGroupManagerEnhanced: React.FC = () => {
             <TextArea rows={3} placeholder="账号组的用途说明" />
           </Form.Item>
           
-          {!isEdit && (
-            <Form.Item label="选择账号成员">
-              <Transfer
-                dataSource={availableAccounts}
-                targetKeys={selectedAccounts}
-                onChange={setSelectedAccounts}
-                render={item => (
-                  <Space>
-                    <Avatar size="small" style={{ backgroundColor: getPlatformColor(item.platform) }}>
-                      {item.platform.substring(0, 1).toUpperCase()}
-                    </Avatar>
-                    {item.account_name}
-                  </Space>
-                )}
-                titles={['可选账号', '已选账号']}
-                listStyle={{ width: 350, height: 300 }}
-                showSearch
-                filterOption={(inputValue, option) =>
-                  option.account_name.toLowerCase().includes(inputValue.toLowerCase())
-                }
-              />
-            </Form.Item>
-          )}
+          <Form.Item label="选择账号成员">
+            <Transfer
+              dataSource={availableAccounts}
+              targetKeys={selectedAccounts}
+              onChange={setSelectedAccounts}
+              render={item => (
+                <Space>
+                  <Avatar size="small" style={{ backgroundColor: getPlatformColor(item.platform || 'youtube') }}>
+                    {(item.platform || 'youtube').substring(0, 1).toUpperCase()}
+                  </Avatar>
+                  {item.account_name}
+                </Space>
+              )}
+              titles={['可选账号', '已选账号']}
+              listStyle={{ width: 350, height: 300 }}
+              showSearch
+              filterOption={(inputValue, option) =>
+                option.account_name.toLowerCase().includes(inputValue.toLowerCase())
+              }
+            />
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -491,11 +570,14 @@ const AccountGroupManagerEnhanced: React.FC = () => {
                       title: '平台',
                       dataIndex: 'platform',
                       width: 100,
-                      render: (platform: string) => (
-                        <Tag color={getPlatformColor(platform)}>
-                          {platform.toUpperCase()}
-                        </Tag>
-                      )
+                      render: (platform: string) => {
+                        const displayPlatform = platform || 'youtube';
+                        return (
+                          <Tag color={getPlatformColor(displayPlatform)}>
+                            {displayPlatform.toUpperCase()}
+                          </Tag>
+                        );
+                      }
                     },
                     {
                       title: '角色',

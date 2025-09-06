@@ -35,5 +35,8 @@ python-jose[cryptography]>=3.3.0
 # Timezone support
 pytz>=2024.1
 
+# Cron expression support for scheduling
+croniter>=2.0.0
+
 # CORS support (already included in fastapi)
 # python-multipart is already listed above

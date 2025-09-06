@@ -613,6 +613,7 @@ if __name__ == "__main__":
     parser.add_argument('--service', type=str, default='old', choices=['old', 'new'],
                        help='TTS服务类型: old=旧版EasyVoice(默认), new=新版公开API')
     parser.add_argument('--url', type=str, help='自定义服务URL')
+    parser.add_argument('--account', type=str, help='发布账号')
     
     # 解析参数
     args = parser.parse_args()

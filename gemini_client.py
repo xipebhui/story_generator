@@ -54,7 +54,13 @@ class GeminiClient:
         }
         
         try:
-            response = requests.post(url, json=payload, headers={"Content-Type": "application/json"})
+            # 禁用代理，直接连接
+            response = requests.post(
+                url, 
+                json=payload, 
+                headers={"Content-Type": "application/json"},
+                proxies={"http": None, "https": None}  # 明确禁用代理
+            )
             response.raise_for_status()
             
             result = response.json()
@@ -112,7 +118,13 @@ class GeminiClient:
         }
         
         try:
-            response = requests.post(url, json=payload, headers={"Content-Type": "application/json"})
+            # 禁用代理，直接连接
+            response = requests.post(
+                url, 
+                json=payload, 
+                headers={"Content-Type": "application/json"},
+                proxies={"http": None, "https": None}  # 明确禁用代理
+            )
             response.raise_for_status()
             
             result = response.json()
@@ -152,7 +164,13 @@ class GeminiClient:
         }
         
         try:
-            response = requests.post(url, json=payload, headers={"Content-Type": "application/json"})
+            # 禁用代理，直接连接
+            response = requests.post(
+                url, 
+                json=payload, 
+                headers={"Content-Type": "application/json"},
+                proxies={"http": None, "https": None}  # 明确禁用代理
+            )
             response.raise_for_status()
             
             result = response.json()
@@ -196,7 +214,13 @@ class GeminiClient:
         }
         
         try:
-            response = requests.post(url, json=payload, headers={"Content-Type": "application/json"})
+            # 禁用代理，直接连接
+            response = requests.post(
+                url, 
+                json=payload, 
+                headers={"Content-Type": "application/json"},
+                proxies={"http": None, "https": None}  # 明确禁用代理
+            )
             response.raise_for_status()
             
             result = response.json()

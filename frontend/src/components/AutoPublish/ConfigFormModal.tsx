@@ -25,7 +25,9 @@ import {
   ExclamationCircleOutlined,
   SettingOutlined,
   CalendarOutlined,
-  FieldTimeOutlined
+  FieldTimeOutlined,
+  PlusOutlined,
+  MinusCircleOutlined
 } from '@ant-design/icons';
 import moment from 'moment';
 import { autoPublishService } from '../../services/autoPublish';
@@ -117,6 +119,9 @@ const ConfigFormModal: React.FC<ConfigFormModalProps> = ({
       Object.entries(pipeline.config_schema.properties).forEach(([key, prop]: [string, any]) => {
         if (prop.default !== undefined) {
           defaultParams[key] = prop.default;
+        } else if (prop.type === 'array') {
+          // 为数组类型设置空数组作为默认值
+          defaultParams[key] = [];
         }
       });
       setPipelineParams(defaultParams);
@@ -235,7 +240,47 @@ const ConfigFormModal: React.FC<ConfigFormModalProps> = ({
                       onChange={(checked) => setPipelineParams({ ...pipelineParams, [key]: checked })}
                     />
                   );
+                case 'array':
+                  // 动态数组输入
+                  const arrayValue = pipelineParams[key] || [];
+                  return (
+                    <div>
+                      {arrayValue.map((item: any, index: number) => (
+                        <Space key={index} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
+                          <Input
+                            value={item}
+                            onChange={(e) => {
+                              const newArray = [...arrayValue];
+                              newArray[index] = e.target.value;
+                              setPipelineParams({ ...pipelineParams, [key]: newArray });
+                            }}
+                            placeholder={`输入${prop.title || key} #${index + 1}`}
+                            style={{ width: 300 }}
+                          />
+                          <MinusCircleOutlined
+                            onClick={() => {
+                              const newArray = arrayValue.filter((_: any, i: number) => i !== index);
+                              setPipelineParams({ ...pipelineParams, [key]: newArray });
+                            }}
+                            style={{ color: '#ff4d4f', cursor: 'pointer' }}
+                          />
+                        </Space>
+                      ))}
+                      <Button
+                        type="dashed"
+                        onClick={() => {
+                          const newArray = [...arrayValue, ''];
+                          setPipelineParams({ ...pipelineParams, [key]: newArray });
+                        }}
+                        block
+                        icon={<PlusOutlined />}
+                      >
+                        添加 {prop.title || key}
+                      </Button>
+                    </div>
+                  );
                 default:
+                  // 对象或其他复杂类型，仍使用JSON输入
                   return (
                     <TextArea
                       value={pipelineParams[key] ? JSON.stringify(pipelineParams[key]) : ''}

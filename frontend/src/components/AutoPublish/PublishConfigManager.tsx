@@ -49,6 +49,7 @@ const PublishConfigManager: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [detailVisible, setDetailVisible] = useState(false);
   const [selectedConfig, setSelectedConfig] = useState<PublishConfig | null>(null);
+  const [editingConfig, setEditingConfig] = useState<PublishConfig | null>(null);
   const [form] = Form.useForm();
   const [groups, setGroups] = useState<any[]>([]);
   const [pipelines, setPipelines] = useState<any[]>([]);
@@ -109,6 +110,30 @@ const PublishConfigManager: React.FC = () => {
 
   const handleCreate = () => {
     form.resetFields();
+    setEditingConfig(null);
+    setModalVisible(true);
+  };
+
+  const handleEdit = (config: PublishConfig) => {
+    setEditingConfig(config);
+    form.setFieldsValue({
+      config_name: config.config_name,
+      group_id: config.group_id,
+      pipeline_id: config.pipeline_id,
+      trigger_type: config.trigger_type,
+      strategy_id: config.strategy_id,
+      priority: config.priority,
+      // 根据触发类型设置相应的字段
+      ...(config.trigger_type === 'scheduled' && config.trigger_config ? {
+        interval: config.trigger_config.interval,
+        time: config.trigger_config.time,
+        days_of_week: config.trigger_config.days_of_week
+      } : {}),
+      ...(config.trigger_type === 'monitor' && config.trigger_config ? {
+        monitor_id: config.trigger_config.monitor_id,
+        threshold: config.trigger_config.threshold
+      } : {})
+    });
     setModalVisible(true);
   };
 
@@ -125,9 +150,12 @@ const PublishConfigManager: React.FC = () => {
       } else if (values.trigger_type === 'monitor') {
         triggerConfig.monitor_id = values.monitor_id;
         triggerConfig.threshold = values.threshold;
+      } else if (values.trigger_type === 'manual') {
+        // 手动触发不需要额外配置
+        triggerConfig.type = 'manual';
       }
 
-      await autoPublishService.createPublishConfig({
+      const configData = {
         config_name: values.config_name,
         group_id: values.group_id,
         pipeline_id: values.pipeline_id,
@@ -135,13 +163,24 @@ const PublishConfigManager: React.FC = () => {
         trigger_config: triggerConfig,
         strategy_id: values.strategy_id,
         priority: values.priority || 50
-      });
+      };
 
-      message.success('创建发布配置成功');
+      if (editingConfig) {
+        // 更新配置
+        await autoPublishService.updatePublishConfig(editingConfig.config_id, configData);
+        message.success('更新发布配置成功');
+      } else {
+        // 创建配置
+        await autoPublishService.createPublishConfig(configData);
+        message.success('创建发布配置成功');
+      }
+
       setModalVisible(false);
+      setEditingConfig(null);
       loadConfigs();
     } catch (error) {
-      message.error('创建发布配置失败');
+      console.error('保存配置失败:', error);
+      message.error(editingConfig ? '更新发布配置失败' : '创建发布配置失败');
     }
   };
 
@@ -170,6 +209,26 @@ const PublishConfigManager: React.FC = () => {
   const showDetail = (config: PublishConfig) => {
     setSelectedConfig(config);
     setDetailVisible(true);
+  };
+
+  const handleManualTrigger = async (config: PublishConfig) => {
+    Modal.confirm({
+      title: '确认手动触发',
+      content: `确定要手动触发配置 "${config.config_name}" 吗？这将为账号组中的所有账号创建执行任务。`,
+      okText: '确认触发',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          const response = await autoPublishService.manualTriggerConfig(config.config_id);
+          message.success(`成功触发配置，创建了 ${response.task_count} 个任务`);
+          // 可选：刷新配置列表或任务列表
+          loadConfigs();
+        } catch (error) {
+          console.error('手动触发失败:', error);
+          message.error('手动触发失败，请查看控制台了解详情');
+        }
+      }
+    });
   };
 
   const columns = [
@@ -212,9 +271,28 @@ const PublishConfigManager: React.FC = () => {
       key: 'trigger_type',
       width: 100,
       render: (type: string) => {
-        const icon = type === 'scheduled' ? <ClockCircleOutlined /> : <ThunderboltOutlined />;
-        const text = type === 'scheduled' ? '定时' : '监控';
-        const color = type === 'scheduled' ? 'blue' : 'orange';
+        let icon, text, color;
+        switch (type) {
+          case 'scheduled':
+            icon = <ClockCircleOutlined />;
+            text = '定时';
+            color = 'blue';
+            break;
+          case 'monitor':
+            icon = <ThunderboltOutlined />;
+            text = '监控';
+            color = 'orange';
+            break;
+          case 'manual':
+            icon = <SettingOutlined />;
+            text = '手动';
+            color = 'green';
+            break;
+          default:
+            icon = null;
+            text = type;
+            color = 'default';
+        }
         return (
           <Tag icon={icon} color={color}>{text}</Tag>
         );
@@ -259,9 +337,19 @@ const PublishConfigManager: React.FC = () => {
     {
       title: '操作',
       key: 'actions',
-      width: 150,
+      width: 200,
       render: (_: any, record: PublishConfig) => (
         <Space>
+          {record.trigger_type === 'manual' && record.is_active && (
+            <Tooltip title="手动触发">
+              <Button
+                type="primary"
+                icon={<ThunderboltOutlined />}
+                size="small"
+                onClick={() => handleManualTrigger(record)}
+              />
+            </Tooltip>
+          )}
           <Tooltip title="查看详情">
             <Button
               icon={<EyeOutlined />}
@@ -270,7 +358,11 @@ const PublishConfigManager: React.FC = () => {
             />
           </Tooltip>
           <Tooltip title="编辑">
-            <Button icon={<EditOutlined />} size="small" />
+            <Button 
+              icon={<EditOutlined />} 
+              size="small" 
+              onClick={() => handleEdit(record)}
+            />
           </Tooltip>
           <Popconfirm
             title="确定删除此配置？"
@@ -309,9 +401,12 @@ const PublishConfigManager: React.FC = () => {
       </Card>
 
       <Modal
-        title="创建发布配置"
+        title={editingConfig ? "编辑发布配置" : "创建发布配置"}
         visible={modalVisible}
-        onCancel={() => setModalVisible(false)}
+        onCancel={() => {
+          setModalVisible(false);
+          setEditingConfig(null);
+        }}
         onOk={() => form.submit()}
         width={600}
         destroyOnClose
@@ -366,6 +461,7 @@ const PublishConfigManager: React.FC = () => {
             <Select>
               <Select.Option value="scheduled">定时触发</Select.Option>
               <Select.Option value="monitor">监控触发</Select.Option>
+              <Select.Option value="manual">手动触发</Select.Option>
             </Select>
           </Form.Item>
 
@@ -375,48 +471,65 @@ const PublishConfigManager: React.FC = () => {
               prevValues.trigger_type !== currentValues.trigger_type
             }
           >
-            {({ getFieldValue }) =>
-              getFieldValue('trigger_type') === 'scheduled' ? (
-                <>
-                  <Form.Item
-                    name="interval"
-                    label="触发间隔"
-                    rules={[{ required: true, message: '请选择触发间隔' }]}
-                  >
-                    <Select>
-                      <Select.Option value="daily">每天</Select.Option>
-                      <Select.Option value="weekly">每周</Select.Option>
-                      <Select.Option value="custom">自定义</Select.Option>
-                    </Select>
-                  </Form.Item>
+            {({ getFieldValue }) => {
+              const triggerType = getFieldValue('trigger_type');
+              if (triggerType === 'scheduled') {
+                return (
+                  <>
+                    <Form.Item
+                      name="interval"
+                      label="触发间隔"
+                      rules={[{ required: true, message: '请选择触发间隔' }]}
+                    >
+                      <Select>
+                        <Select.Option value="daily">每天</Select.Option>
+                        <Select.Option value="weekly">每周</Select.Option>
+                        <Select.Option value="custom">自定义</Select.Option>
+                      </Select>
+                    </Form.Item>
 
-                  <Form.Item
-                    name="time"
-                    label="触发时间"
-                    rules={[{ required: true, message: '请输入触发时间' }]}
-                  >
-                    <Input placeholder="例如：09:00" />
-                  </Form.Item>
-                </>
-              ) : (
-                <>
-                  <Form.Item
-                    name="monitor_id"
-                    label="监控配置"
-                    rules={[{ required: true, message: '请输入监控配置ID' }]}
-                  >
-                    <Input placeholder="监控配置ID" />
-                  </Form.Item>
+                    <Form.Item
+                      name="time"
+                      label="触发时间"
+                      rules={[{ required: true, message: '请输入触发时间' }]}
+                    >
+                      <Input placeholder="例如：09:00" />
+                    </Form.Item>
+                  </>
+                );
+              } else if (triggerType === 'monitor') {
+                return (
+                  <>
+                    <Form.Item
+                      name="monitor_id"
+                      label="监控配置"
+                      rules={[{ required: true, message: '请输入监控配置ID' }]}
+                    >
+                      <Input placeholder="监控配置ID" />
+                    </Form.Item>
 
-                  <Form.Item
-                    name="threshold"
-                    label="触发阈值"
-                  >
-                    <InputNumber min={0} placeholder="触发阈值" style={{ width: '100%' }} />
+                    <Form.Item
+                      name="threshold"
+                      label="触发阈值"
+                    >
+                      <InputNumber min={0} placeholder="触发阈值" style={{ width: '100%' }} />
+                    </Form.Item>
+                  </>
+                );
+              } else if (triggerType === 'manual') {
+                return (
+                  <Form.Item>
+                    <div style={{ padding: '10px', background: '#f0f2f5', borderRadius: '4px' }}>
+                      <p style={{ margin: 0 }}>
+                        手动触发模式：配置创建后，您可以在配置列表中点击"手动触发"按钮来执行此配置。
+                        这种模式适合用于调试和测试。
+                      </p>
+                    </div>
                   </Form.Item>
-                </>
-              )
-            }
+                );
+              }
+              return null;
+            }}
           </Form.Item>
 
           <Form.Item

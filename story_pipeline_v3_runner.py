@@ -111,8 +111,8 @@ class StrictPipeline(Pipeline):
                     if context.cache_dir:
                         self._save_error_log(context, step.name, result.error)
                     
-                    # 终止程序
-                    sys.exit(1)
+                    # 返回失败而不是终止程序
+                    return False
                 
                 logger.info(f"[OK] 步骤完成: {step.name}")
                 
@@ -132,8 +132,8 @@ class StrictPipeline(Pipeline):
                 import traceback
                 traceback.print_exc()
                 
-                # 终止程序
-                sys.exit(1)
+                # 返回失败而不是终止程序
+                return False
         
         logger.info(f"\n{'='*60}")
         logger.info(f"[SUCCESS] Pipeline执行成功!")
@@ -295,9 +295,9 @@ class StoryPipelineV3Runner:
                 print(f"  - {file.name}")
         print("="*60)
     
-    def execute(self, params: dict) -> dict:
+    async def execute(self, params: dict) -> dict:
         """
-        执行Pipeline - 自动发布系统接口
+        执行Pipeline - 自动发布系统接口（异步版本）
         
         这是与账号驱动自动发布系统集成的标准接口。
         所有Pipeline都应该实现这个方法。
@@ -333,9 +333,20 @@ class StoryPipelineV3Runner:
             # 使用account_id作为creator_name，如果没有则使用默认值
             creator_name = params.get('creator_name') or params.get('account_id', 'default')
             
-            # 执行Pipeline
+            # 执行Pipeline（在线程池中运行同步代码）
             logger.info(f"[EXECUTE] 通过自动发布系统执行Pipeline: video_id={video_id}, creator={creator_name}")
-            success = self.run(video_id=video_id, creator_name=creator_name)
+            
+            # 使用asyncio.to_thread（Python 3.9+）或run_in_executor来异步执行同步代码
+            import asyncio
+            import sys
+            
+            if sys.version_info >= (3, 9):
+                # Python 3.9+ 使用 to_thread
+                success = await asyncio.to_thread(self.run, video_id=video_id, creator_name=creator_name)
+            else:
+                # Python 3.8 及以下使用 run_in_executor
+                loop = asyncio.get_event_loop()
+                success = await loop.run_in_executor(None, self.run, video_id, creator_name)
             
             if success:
                 # 构建返回结果
